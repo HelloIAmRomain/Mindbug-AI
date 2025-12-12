@@ -3,13 +3,13 @@ name: Build & Release Mindbug
 on:
   push:
     tags:
-      - 'v*' # Se déclenche sur les tags comme v1.0, v2.3.1
+      - 'v*' # Se déclenche sur les tags (ex: v1.0.0)
 
 permissions:
   contents: write
 
 jobs:
-  # JOBS 1 : TESTS (Doivent passer avant de compiler)
+  # JOBS 1 : TESTS
   test:
     runs-on: ubuntu-latest
     steps:
@@ -28,20 +28,20 @@ jobs:
 
   # JOB 2 : BUILD WINDOWS & LINUX
   build:
-    needs: test # Attend que les tests soient verts
+    needs: test
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
           - os: windows-latest
-            artifact_name: MindbugAI.exe
-            asset_name: MindbugAI-Windows.exe
-            sep: ';' # Séparateur pour PyInstaller Windows
+            sep: ';'                 # Séparateur de chemin Windows
+            original_name: MindbugAI.exe
+            final_name: MindbugAI-Windows.exe
           - os: ubuntu-latest
-            artifact_name: MindbugAI
-            asset_name: MindbugAI-Linux
-            sep: ':' # Séparateur pour PyInstaller Linux
+            sep: ':'                 # Séparateur de chemin Linux
+            original_name: MindbugAI
+            final_name: MindbugAI-Linux
 
     steps:
       - uses: actions/checkout@v3
@@ -58,45 +58,49 @@ jobs:
           pip install pyinstaller
 
       - name: Build with PyInstaller
-        # Commande magique :
-        # --onefile : Un seul exécutable
-        # --noconsole : Pas de fenêtre noire derrière (pour Windows)
-        # --add-data : Embarque les dossiers assets et data
-        # --name : Nom du fichier final
+        # On garde le nom de base "MindbugAI" ici pour que PyInstaller soit prévisible
         run: |
           pyinstaller main.py --onefile --noconsole --name MindbugAI --add-data "assets${{ matrix.sep }}assets" --add-data "data${{ matrix.sep }}data"
 
-      - name: Upload Artifact (Temp storage)
+      - name: Rename Binary
+        # C'est ici que la magie opère : on renomme le fichier généré
+        # 'mv' fonctionne sur Linux (bash) ET sur Windows (PowerShell)
+        run: |
+          mv dist/${{ matrix.original_name }} dist/${{ matrix.final_name }}
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
-          path: dist/${{ matrix.artifact_name }}
+          name: ${{ matrix.final_name }} # Nom de l'artefact pour GitHub
+          path: dist/${{ matrix.final_name }}
 
-  # JOB 3 : CRÉATION DE LA RELEASE
+  # JOB 3 : RELEASE
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       
-      - name: Download Windows Artifact
+      # Téléchargement des artefacts (Windows)
+      - name: Download Windows Binary
         uses: actions/download-artifact@v4
         with:
           name: MindbugAI-Windows.exe
-          path: ./dist-win
+          path: ./release_files
 
-      - name: Download Linux Artifact
+      # Téléchargement des artefacts (Linux)
+      - name: Download Linux Binary
         uses: actions/download-artifact@v4
         with:
           name: MindbugAI-Linux
-          path: ./dist-linux
+          path: ./release_files
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            ./dist-win/MindbugAI.exe
-            ./dist-linux/MindbugAI
+            ./release_files/MindbugAI-Windows.exe
+            ./release_files/MindbugAI-Linux
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
