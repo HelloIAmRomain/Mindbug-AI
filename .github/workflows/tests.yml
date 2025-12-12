@@ -1,4 +1,4 @@
-name: CI Tests
+name: CI Tests & Coverage
 
 on:
   push:
@@ -6,19 +6,45 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# INDISPENSABLE : Donne la permission au robot de modifier le code
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.head_ref }} # Important pour pouvoir commiter sur la branche de la PR
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # On installe l'outil de génération de badge
+          pip install coverage-badge
+
       - name: Run Tests with Coverage
         run: |
-          pytest tests/
+          # Lance les tests et génère le rapport
+          pytest --cov=mindbug_engine tests/
+
+      - name: Generate Coverage Badge
+        run: |
+          # Génère le fichier coverage.svg à la racine
+          # -f force l'écrasement si le fichier existe déjà
+          coverage-badge -o coverage.svg -f
+
+      - name: Commit Coverage Badge
+        # Cette étape ne s'exécute que sur les Pull Requests (pour ne pas spammer main)
+        if: github.event_name == 'pull_request'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update coverage badge [skip ci]"
+          file_pattern: coverage.svg

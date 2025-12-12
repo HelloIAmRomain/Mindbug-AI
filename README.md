@@ -1,8 +1,8 @@
 # 🐞 Mindbug Python Implementation
 
-![Build Status](https://img.shields.io/github/actions/workflow/status/HelloIAmRomain/Mindbug-AI/tests.yml?branch=main)
+[![CI Tests](https://github.com/HelloIAmRomain/Mindbug-AI/actions/workflows/tests.yml/badge.svg)](https://github.com/HelloIAmRomain/Mindbug-AI/actions/workflows/tests.yml)
 ![Python Version](https://img.shields.io/badge/python-3.12%2B-blue)
-![Coverage](https://img.shields.io/badge/coverage-81%25-green)
+![Coverage](./coverage.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Une implémentation open-source, fidèle et robuste du jeu de cartes **Mindbug : Premier Contact**.
