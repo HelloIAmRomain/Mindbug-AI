@@ -1,0 +1,102 @@
+name: Build & Release Mindbug
+
+on:
+  push:
+    tags:
+      - 'v*' # Se déclenche sur les tags comme v1.0, v2.3.1
+
+permissions:
+  contents: write
+
+jobs:
+  # JOBS 1 : TESTS (Doivent passer avant de compiler)
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run Tests
+        run: |
+          pytest tests/
+
+  # JOB 2 : BUILD WINDOWS & LINUX
+  build:
+    needs: test # Attend que les tests soient verts
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: MindbugAI.exe
+            asset_name: MindbugAI-Windows.exe
+            sep: ';' # Séparateur pour PyInstaller Windows
+          - os: ubuntu-latest
+            artifact_name: MindbugAI
+            asset_name: MindbugAI-Linux
+            sep: ':' # Séparateur pour PyInstaller Linux
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        # Commande magique :
+        # --onefile : Un seul exécutable
+        # --noconsole : Pas de fenêtre noire derrière (pour Windows)
+        # --add-data : Embarque les dossiers assets et data
+        # --name : Nom du fichier final
+        run: |
+          pyinstaller main.py --onefile --noconsole --name MindbugAI --add-data "assets${{ matrix.sep }}assets" --add-data "data${{ matrix.sep }}data"
+
+      - name: Upload Artifact (Temp storage)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/${{ matrix.artifact_name }}
+
+  # JOB 3 : CRÉATION DE LA RELEASE
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MindbugAI-Windows.exe
+          path: ./dist-win
+
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MindbugAI-Linux
+          path: ./dist-linux
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ./dist-win/MindbugAI.exe
+            ./dist-linux/MindbugAI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

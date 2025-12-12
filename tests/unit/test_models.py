@@ -98,3 +98,19 @@ def test_loader_parses_ability():
             }
         }
     ])
+
+def test_models_repr():
+    """Vérifie l'affichage string des objets pour le debug."""
+    # Test Card
+    c = Card("c1", "TestCard", 5, keywords=["HUNTER"])
+    rep = repr(c)
+    assert "TestCard" in rep
+    assert "5" in rep
+    assert "HUNTER" in rep
+    
+    # Test Player
+    p = Player("Toto")
+    p.hp = 2
+    rep_p = repr(p)
+    assert "Toto" in rep_p
+    assert "HP:2" in rep_p

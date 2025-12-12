@@ -1,0 +1,13 @@
+Liste des améliorations à effectuer
+
+CI/CD
+- Faire en sorte de pouvoir packager l'appli dans un exécutable + intégrer le process dans la CI
+
+Fonctionnel
+- Choisir les cartes affectés (discard, ...)
+- Si pas possible alors ne pas demander mindbug / bloquer / ... pour accélérer le jeu
+
+Visuel
+- Animations ex: Glisser déposer les cartes
+- Effet glow des cartes
+

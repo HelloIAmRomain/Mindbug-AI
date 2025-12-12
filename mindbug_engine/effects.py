@@ -1,130 +1,141 @@
 import random
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 from .models import Card, Player
 
 if TYPE_CHECKING:
     from .engine import MindbugGame
 
 class EffectManager:
-    """
-    Catalogue des effets déclenchés par les cartes.
-    """
-
     @staticmethod
     def apply_effect(game: 'MindbugGame', card: Card, owner: Player, opponent: Player):
-        """
-        Dispatche l'effet de la carte vers la bonne fonction.
-        """
-        if not card.ability:
-            return
+        if not card.ability: return
 
         code = card.ability.code
         val = card.ability.value
-        condition = card.ability.condition
-        
-        print(f"✨ EFFET DÉCLENCHÉ : {code} (Val:{val}) pour {card.name}")
+        condition_type = card.ability.condition
+        threshold = card.ability.condition_value
+        target_type = card.ability.target
 
-        # --- LISTE DES EFFETS ---
+        print(f"✨ EFFET : {code} (Val:{val}) pour {card.name}")
+
         if code == "HEAL":
-            # Le moteur lit la "value" du JSON (ici 2) et l'ajoute aux PV actuels
-            if card.ability.target == "SELF":
-                owner.hp += val
-                print(f"   -> {owner.name} est soigné de +{val} PV (Total: {owner.hp})")
-
+            if target_type == "SELF": owner.hp += val
         elif code == "DAMAGE":
-            # "L'adversaire perd 1 PV"
-            if card.ability.target == "OPP":
-                opponent.hp -= val
-                print(f"   -> {opponent.name} perd {val} PV (HP: {opponent.hp})")
-
-        elif code == "STEAL_CREATURE":
-            # "Volez une créature ennemie"
-            EffectManager._effect_steal_creature(game, owner, opponent, val)
-
-        elif code == "RECLAIM_DISCARD":
-            # "Récupérez une carte de la défausse"
-            EffectManager._effect_reclaim_discard(owner, val)
-            
-        elif code == "DISCARD_RANDOM":
-            # "L'adversaire défausse au hasard"
-            EffectManager._effect_discard_random(opponent, val)
-
-        elif code == "DESTROY_CREATURE":
-            # "Détruisez une créature ennemie"
-            EffectManager._effect_destroy_creature(game, opponent, condition, val)
-            
-        elif code == "BLOCK_BAN":
-            # Effet passif ou temporaire, souvent géré par rules.py ou un flag
-            # Pour l'instant, on log juste
-            pass
-
-        # ... Ajouter les autres codes ici au besoin
-
-    # --- IMPLÉMENTATIONS SPÉCIFIQUES ---
-
-    @staticmethod
-    def _effect_steal_creature(game, owner: Player, opponent: Player, count: int):
-        if not opponent.board:
-            print("   -> Rien à voler !")
-            return
+            if target_type == "OPP": opponent.hp -= val
+        elif code == "DAMAGE_UNBLOCKED":
+            opponent.hp -= val
+        elif code == "SET_HP_EQUAL_OPPONENT":
+            owner.hp = opponent.hp
+        elif code == "SET_OPPONENT_HP_TO_ONE":
+            if opponent.hp > 1: opponent.hp = 1
         
-        # Pour l'instant : Vol aléatoire (Dans le futur : Choix UI/IA)
-        # TODO: Implémenter la sélection manuelle via game.ask_choice()
-        for _ in range(count):
-            if opponent.board:
-                target = random.choice(opponent.board) # Simplification temporaire
-                opponent.board.remove(target)
-                owner.board.append(target)
-                print(f"   -> {owner.name} vole {target.name} !")
+        elif code == "STEAL_CREATURE":
+            EffectManager._resolve_steal_creature(game, owner, opponent, val, condition_type, threshold)
+        elif code == "STEAL_CARD_HAND":
+            EffectManager._resolve_steal_hand(game, owner, opponent, val)
+        elif code == "RECLAIM_DISCARD":
+            EffectManager._resolve_reclaim_discard(game, owner, val)
+        elif code == "RECLAIM_ALL_DISCARD":
+            EffectManager._resolve_reclaim_all_discard(owner)
+        elif code == "PLAY_FROM_MY_DISCARD":
+            EffectManager._resolve_play_my_discard(game, owner, val)
+        
+        elif code == "DISCARD_RANDOM" or code == "DISCARD_OPPONENT_CHOICE":
+            EffectManager._resolve_discard_random(game, opponent, val)
+        
+        elif code == "DESTROY_CREATURE":
+            EffectManager._resolve_destroy_creature(game, opponent, val, condition_type, threshold)
+        elif code == "DESTROY_ALL_ENEMIES":
+            EffectManager._resolve_destroy_all(game, opponent, condition_type, threshold)
+        elif code == "DESTROY_IF_FEWER_ALLIES":
+            if len(owner.board) < len(opponent.board):
+                 EffectManager._resolve_destroy_creature(game, opponent, val, condition_type, threshold)
+        elif code == "PLAY_FROM_OPP_DISCARD":
+            EffectManager._resolve_play_opp_discard(game, owner, opponent, val)
+        elif code == "OPPONENT_SACRIFICE":
+            EffectManager._resolve_sacrifice(game, opponent, val)
 
     @staticmethod
-    def _effect_reclaim_discard(owner: Player, count: int):
-        if not owner.discard:
-            print("   -> Défausse vide.")
-            return
-            
-        for _ in range(count):
-            if owner.discard:
-                # Récupère la dernière carte (LIFO) ou random ? Souvent choix.
-                # Simplification : Dernière carte
-                card = owner.discard.pop()
-                owner.hand.append(card)
-                card.reset() # Enlève les dégâts
-                print(f"   -> {owner.name} récupère {card.name} de la défausse.")
+    def _get_valid_targets(candidates: List[Card], condition_type: str, threshold: int) -> List[Card]:
+        if not candidates: return []
+        if not condition_type or condition_type in ["ALWAYS", "NONE", "CHOICE_USER"]: return candidates
+        filtered = []
+        for card in candidates:
+            is_valid = False
+            if condition_type == "MIN_POWER": 
+                if card.power >= threshold: is_valid = True
+            elif condition_type == "MAX_POWER": 
+                if card.power <= threshold: is_valid = True
+            elif condition_type == "EXACT_POWER": 
+                if card.power == threshold: is_valid = True
+            if is_valid: filtered.append(card)
+        return filtered
 
     @staticmethod
-    def _effect_discard_random(victim: Player, count: int):
-        if not victim.hand:
-            return
-            
+    def _resolve_steal_creature(game, thief, victim, count, cond_type, threshold):
+        candidates = EffectManager._get_valid_targets(victim.board, cond_type, threshold)
+        if not candidates: return
+        game.ask_for_selection(candidates, "STEAL_CREATURE", count, thief)
+
+    @staticmethod
+    def _resolve_destroy_creature(game, victim, count, cond_type, threshold):
+        candidates = EffectManager._get_valid_targets(victim.board, cond_type, threshold)
+        if not candidates: return
+        initiator = game.active_player 
+        game.ask_for_selection(candidates, "DESTROY_CREATURE", count, initiator)
+
+    @staticmethod
+    def _resolve_destroy_all(game, victim, cond_type, threshold):
+        targets = EffectManager._get_valid_targets(victim.board, cond_type, threshold)
+        for target in list(targets):
+            game._destroy_card(target, victim)
+
+    @staticmethod
+    def _resolve_steal_hand(game, thief, victim, count):
+        if not victim.hand: return
         for _ in range(count):
             if victim.hand:
-                card = list(victim.hand)[random.randrange(len(victim.hand))] # Random securisé
+                card = random.choice(victim.hand)
                 victim.hand.remove(card)
-                victim.discard.append(card)
-                print(f"   -> {victim.name} défausse {card.name} (Hasard).")
+                thief.hand.append(card)
+                game.refill_hand(victim)
 
     @staticmethod
-    def _effect_destroy_creature(game, victim: Player, condition: str, count: int):
-        # Filtrage des cibles valides
-        targets = victim.board
-        if condition == "POWER_GE_6": # Tigrécureuil
-            targets = [c for c in victim.board if c.power >= 6]
-        
-        if not targets:
-            print("   -> Aucune cible valide pour la destruction.")
-            return
+    def _resolve_reclaim_discard(game, owner, count):
+        if not owner.discard: return
+        game.ask_for_selection(owner.discard, "RECLAIM_DISCARD", count, owner)
 
-        # Simplification : Destruction aléatoire parmi les valides
-        # TODO: Choix utilisateur
+    @staticmethod
+    def _resolve_play_my_discard(game, owner, count):
+        if not owner.discard: return
+        game.ask_for_selection(owner.discard, "PLAY_FROM_MY_DISCARD", count, owner)
+
+    @staticmethod
+    def _resolve_reclaim_all_discard(owner):
+        if not owner.discard: return
+        for card in owner.discard:
+            card.reset()
+            owner.hand.append(card)
+        owner.discard = []
+
+    @staticmethod
+    def _resolve_discard_random(game, victim, count):
+        if not victim.hand: return
         for _ in range(count):
-            if targets:
-                target = random.choice(targets)
-                print(f"   -> {target.name} est détruit par effet !")
-                # On utilise la méthode publique de l'engine si possible, ou on le fait à la main
-                # Ici on le fait à la main pour éviter import circulaire complexe, 
-                # mais idéalement game._destroy_card(target, victim)
-                if target in victim.board:
-                    victim.board.remove(target)
-                    victim.discard.append(target)
-                    target.reset()
+            if victim.hand:
+                card = random.choice(victim.hand)
+                victim.hand.remove(card)
+                victim.discard.append(card)
+                game.refill_hand(victim)
+
+    @staticmethod
+    def _resolve_play_opp_discard(game, player, opponent, count):
+        if not opponent.discard: return
+        game.ask_for_selection(opponent.discard, "PLAY_FROM_OPP_DISCARD", count, player)
+
+    @staticmethod
+    def _resolve_sacrifice(game, victim, count):
+        if not victim.board: return
+        for _ in range(count):
+            target = random.choice(victim.board) # TODO: rendre interactif (ask_for_selection par victim)
+            game._destroy_card(target, victim)

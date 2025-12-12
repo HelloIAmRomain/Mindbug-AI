@@ -1,7 +1,8 @@
 numpy
 pandas
-pettingzoo      # Standard pour les IA multi-agents
-shimmy          # Compatibilité Gym/PettingZoo
-pytest          # Pour tester les règles
-colorama        # Pour avoir de la couleur dans le terminal (lisibilité)
+pettingzoo
+shimmy
+colorama
 pygame
+pytest-cov
+pytest

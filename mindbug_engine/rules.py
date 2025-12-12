@@ -1,28 +1,23 @@
 from enum import Enum, auto
 from dataclasses import dataclass
 
-# --- 1. CONFIGURATION GLOBALE ---
 @dataclass
 class GameConfig:
     STARTING_HP: int = 3
     STARTING_MINDBUGS: int = 2
     HAND_SIZE: int = 5
-    
-    # Si True: On distribue 10 cartes par joueur (5 main, 5 pioche)
-    # Si False: On pioche dans un deck infini (pour tests)
     USE_COMPETITIVE_SETUP: bool = True 
 
-# LES PHASES DU JEU
 class Phase(Enum):
     SETUP = auto()          
-    P1_MAIN = auto()        # Tour du J1
-    P2_MAIN = auto()        # Tour du J2
-    MINDBUG_DECISION = auto() # Adversaire peut voler
-    BLOCK_DECISION = auto()   # Adversaire peut bloquer
-    RESOLUTION = auto()     # Application des dégâts
+    P1_MAIN = auto()        
+    P2_MAIN = auto()        
+    MINDBUG_DECISION = auto() 
+    BLOCK_DECISION = auto()   
+    RESOLUTION = auto()     
+    RESOLUTION_CHOICE = auto() # Attente action du joueur
     GAME_OVER = auto()
 
-# LES MOTS-CLÉS
 class Keyword(Enum):
     POISON = "POISON"
     HUNTER = "HUNTER"
@@ -30,7 +25,6 @@ class Keyword(Enum):
     TOUGH = "TOUGH"
     FRENZY = "FRENZY"
 
-# TYPES DE DÉCLENCHEURS (TRIGGERS)
 class TriggerType(Enum):
     ON_PLAY = "ON_PLAY"
     ON_ATTACK = "ON_ATTACK"
@@ -38,43 +32,61 @@ class TriggerType(Enum):
     ON_DEATH = "ON_DEATH"
     PASSIVE = "PASSIVE"
 
-
 class CombatUtils:
-    """
-    Bibliothèque de fonctions statiques pour résoudre les conflits.
-    """
-
     @staticmethod
     def can_block(attacker_card, blocker_card) -> bool:
         """
-        Vérifie si un blocage est légal (Gestion du Furtif/Sneaky).
+        Vérifie si un blocage est légal.
+        Gère Furtif (Sneaky) et les conditions dynamiques de Block Ban.
         """
+        # 1. Gestion FURTIF (Sneaky)
         if Keyword.SNEAKY.value in attacker_card.keywords:
-            # Un furtif ne peut être bloqué QUE par un furtif
             if Keyword.SNEAKY.value not in blocker_card.keywords:
                 return False
+
+        # 2. Gestion BLOCK_BAN (Attaquant interdit le blocage)
+        # Ex: Oursabeille (Ne peut être bloqué par <= 6)
+        if attacker_card.ability and attacker_card.ability.code == "BLOCK_BAN":
+            cond_type = attacker_card.ability.condition
+            threshold = attacker_card.ability.condition_value
+            
+            # Condition "MAX_POWER" : Inblocable si Bloqueur.power <= X
+            if cond_type == "MAX_POWER":
+                if blocker_card.power <= threshold:
+                    return False
+            
+            # Condition "MIN_POWER" : Inblocable si Bloqueur.power >= X
+            elif cond_type == "MIN_POWER":
+                if blocker_card.power >= threshold:
+                    return False
+
+            # Condition "ALWAYS" : Totalement inblocable
+            elif cond_type == "ALWAYS":
+                return False
+
+        # Note: BLOCK_BAN_FOR_ENEMIES (Pachypoulpe) nécessiterait de vérifier les passifs
+        # présents sur le plateau de l'attaquant. Ce n'est pas couvert ici par simplicité.
+
         return True
 
     @staticmethod
     def simulate_combat(attacker, blocker):
         """
-        Retourne le résultat théorique du combat SANS modifier l'état du jeu.
-        Returns: (attacker_defeated, blocker_defeated)
+        Retourne le résultat théorique (att_dead, blk_dead)
         """
         att_dead = False
         blk_dead = False
         
-        # 1. Comparaison de Puissance
+        # 1. Puissance
         if attacker.power > blocker.power:
             blk_dead = True
         elif blocker.power > attacker.power:
             att_dead = True
         else:
-            # Égalité
             att_dead = True
             blk_dead = True
             
-        # 2. Gestion du Poison (Tue quoi qu'il arrive)
+        # 2. Poison
         if Keyword.POISON.value in attacker.keywords:
             blk_dead = True
         if Keyword.POISON.value in blocker.keywords:
