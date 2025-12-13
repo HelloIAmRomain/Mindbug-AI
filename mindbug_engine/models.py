@@ -19,7 +19,8 @@ class Card:
     Objet de données représentant une carte.
     Contient l'état statique (stats de base) et dynamique (dégâts, keywords copiés).
     """
-    def __init__(self, id: str, name: str, power: int, keywords: List[str] = None, trigger: str = None, ability: Optional[CardAbility] = None, image_path: str = None):
+    # CORRECTION ICI : Ajout de set_name dans les arguments
+    def __init__(self, id: str, name: str, power: int, keywords: List[str] = None, trigger: str = None, ability: Optional[CardAbility] = None, image_path: str = None, set_name: str = "FIRST_CONTACT"):
         self.id = id
         self.name = name
         self.power = power
@@ -31,6 +32,9 @@ class Card:
         self.trigger = trigger          # ex: "ON_PLAY", "ON_DEATH", "PASSIVE"
         self.ability = ability
         self.image_path = image_path
+        
+        # CORRECTION ICI : Assignation
+        self.set = set_name
         
         # État en jeu
         self.is_damaged = False
@@ -97,8 +101,27 @@ class CardLoader:
                 keywords=entry.get("keywords", []),
                 trigger=entry.get("trigger"),
                 ability=ability,
+                # CORRECTION ICI : On utilise "set_name" pour correspondre au __init__
+                set_name=entry.get("set", "FIRST_CONTACT"), 
                 image_path=entry.get("image")
             )
             cards.append(card)
             
         return cards
+
+    @staticmethod
+    def get_available_sets(file_path: str) -> List[str]:
+        """Scanne le JSON pour trouver tous les noms de sets uniques."""
+        if not os.path.exists(file_path): return []
+        
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # On utilise un set python pour avoir des valeurs uniques, puis on trie
+                unique_sets = set()
+                for entry in data:
+                    s = entry.get("set", "FIRST_CONTACT") # Valeur par défaut si manquant
+                    unique_sets.add(s)
+                return sorted(list(unique_sets))
+        except:
+            return ["FIRST_CONTACT"] # Fallback en cas d'erreur

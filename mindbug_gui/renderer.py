@@ -9,10 +9,12 @@ class GameRenderer:
     Responsable de l'affichage.
     S'adapte dynamiquement à la taille de la fenêtre via DynamicLayout.
     """
-    def __init__(self, screen, game_instance, debug_mode=False):
+    def __init__(self, screen, game_instance, config):
         self.screen = screen
         self.game = game_instance
-        self.debug = debug_mode
+        self.config = config          # <--- ON STOCKE LA CONFIG
+        self.debug = config.debug_mode # On garde le raccourci pour le reste du code
+        
         self.click_zones = [] 
         
         # 1. Initialisation du Layout Dynamique
@@ -91,7 +93,14 @@ class GameRenderer:
         # 2. Zones de jeu (Mains & Boards)
         hide_p2 = True
         hide_p1 = False
-        if not self.debug:
+        # Si Debug ou Mode DEV, on montre tout
+        show_all = self.debug or (getattr(self.config, "game_mode", "") == "DEV")
+
+        if show_all:
+            hide_p1 = False
+            hide_p2 = False
+        else:
+            # Logique Hotseat normale
             if self.game.active_player == self.game.player1:
                 hide_p2 = True
                 hide_p1 = False

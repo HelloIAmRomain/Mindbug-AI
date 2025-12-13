@@ -6,7 +6,7 @@ import traceback
 # Ajout du chemin racine pour garantir que les imports fonctionnent
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Imports centralisés
+# --- CORRECTION ICI : On importe bien WINDOW_TITLE depuis constants ---
 from constants import DEFAULT_WIDTH, DEFAULT_HEIGHT, WINDOW_TITLE
 from config import GameConfig
 from mindbug_gui.menu import MenuScreen, SettingsScreen
@@ -21,17 +21,23 @@ def main():
     # 1. Initialisation unique de PyGame
     pygame.init()
     
-    # 2. Configuration de la Fenêtre (Mode RESIZABLE)
-    screen = pygame.display.set_mode((DEFAULT_WIDTH, DEFAULT_HEIGHT), pygame.RESIZABLE)
-    pygame.display.set_caption(WINDOW_TITLE)
-    
-    # 3. Chargement de la Configuration
+    # 2. Chargement de la Configuration (et des Settings)
+    # On le fait AVANT de créer la fenêtre pour récupérer la résolution sauvegardée
     config = GameConfig()
+    
+    # 3. Configuration de la Fenêtre
+    # On récupère la résolution depuis le fichier settings.json chargé par config
+    # Si config.settings.resolution n'existe pas, on a des valeurs par défaut dans settings.py
+    w, h = config.settings.resolution
+    
+    screen = pygame.display.set_mode((w, h), pygame.RESIZABLE)
+    pygame.display.set_caption(WINDOW_TITLE)
     
     # 4. État initial
     current_state = "MENU"
     
     print(f"Démarrage de {WINDOW_TITLE}...")
+    print(f"Mode actuel : {config.game_mode}")
 
     try:
         # 5. Boucle Principale des États
@@ -51,7 +57,7 @@ def main():
             elif current_state == "PLAY":
                 print("Lancement du module de jeu (MindbugGUI)...")
                 # Le jeu gère dynamiquement le redimensionnement via son Renderer
-                game_app = MindbugGUI(config)
+                game_app = MindbugGUI(config, screen) # On passe l'écran existant
                 current_state = game_app.run()
                 
             else:
