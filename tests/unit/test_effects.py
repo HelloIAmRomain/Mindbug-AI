@@ -1,19 +1,15 @@
 import pytest
 from mindbug_engine.models import Card, CardAbility
-from mindbug_engine.effects import EffectManager
 from mindbug_engine.engine import MindbugGame
 from mindbug_engine.rules import Phase
 
-@pytest.fixture
-def game():
-    return MindbugGame()
+# Note: On n'importe plus EffectManager directement, on l'utilise via game.effect_manager
 
 def test_dracompost_play_discard(game):
     p1 = game.player1
     dead_card = Card("d1", "BigGuy", 10)
     p1.discard = [dead_card]
     
-    # AJOUT DE TRIGGER="ON_PLAY"
     dracompost = Card("dc", "Draco", 3, trigger="ON_PLAY", 
                       ability=CardAbility("PLAY_FROM_MY_DISCARD", "SELF", 1))
     p1.hand = [dracompost]
@@ -21,7 +17,6 @@ def test_dracompost_play_discard(game):
     game.step("PLAY", 0)
     game.step("PASS")
     
-    # CHECK : Phase sélection
     assert game.phase == Phase.RESOLUTION_CHOICE
     game.step("SELECT_DISCARD_P1", 0)
     assert dead_card in p1.board
@@ -31,7 +26,6 @@ def test_reclaim_all_discard(game):
     c1 = Card("1", "A", 1)
     p1.discard = [c1]
     
-    # AJOUT DE TRIGGER="ON_PLAY"
     giraffodile = Card("g", "Gira", 7, trigger="ON_PLAY", 
                        ability=CardAbility("RECLAIM_ALL_DISCARD", "SELF", 0))
     p1.hand = [giraffodile]
@@ -49,7 +43,6 @@ def test_neuromouche_steal_condition(game):
     strong = Card("s", "Strong", 7)
     p2.board = [weak, strong]
     
-    # AJOUT DE TRIGGER="ON_PLAY"
     neuro = Card("n", "Fly", 4, trigger="ON_PLAY",
                  ability=CardAbility("STEAL_CREATURE", "OPP", 1, "MIN_POWER", 6))
     p1.hand = [neuro]
@@ -59,29 +52,24 @@ def test_neuromouche_steal_condition(game):
     
     assert game.phase == Phase.RESOLUTION_CHOICE
     
-    # Vérifions que SEUL le fort est candidat
     candidates = game.selection_context["candidates"]
     assert strong in candidates
     assert weak not in candidates
     
-    # On doit sélectionner par index dans la liste de candidats ? Non, index sur le board.
-    # Strong est à l'index 1 du board P2.
+    # Strong est à l'index 1 du board P2
     game.step("SELECT_BOARD_P2", 1)
     
     assert strong in p1.board
 
 def test_effect_destroy_all_enemies(game):
-    """Test Kangousaurus (DESTROY_ALL_ENEMIES)."""
     p1 = game.player1
     p2 = game.player2
     
-    # P2 a 2 faibles (3) et 1 fort (8)
     w1 = Card("w1", "Weak1", 3)
     w2 = Card("w2", "Weak2", 3)
     s1 = Card("s1", "Strong", 8)
     p2.board = [w1, w2, s1]
     
-    # Carte avec effet de masse (< 4)
     kanga = Card("k", "Kanga", 7, trigger="ON_PLAY",
                  ability=CardAbility("DESTROY_ALL_ENEMIES", "OPP", 0, "MAX_POWER", 4))
     p1.hand = [kanga]
@@ -89,19 +77,18 @@ def test_effect_destroy_all_enemies(game):
     game.step("PLAY", 0)
     game.step("PASS")
     
-    # Vérif : Les faibles sont détruits, le fort reste
     assert w1 in p2.discard
     assert w2 in p2.discard
     assert s1 in p2.board
 
 def test_effect_discard_random(game):
-    """Test Furet/Huissier (Défausse au hasard)."""
     p2 = game.player2
     c1 = Card("c1", "C1", 1)
     c2 = Card("c2", "C2", 1)
     p2.hand = [c1, c2]
+    # On vide le deck pour éviter le refill automatique qui fausserait le compte
+    p2.deck = [] 
     
-    # Effet : Défausse 1 carte
     furet = Card("f", "Furet", 2, trigger="ON_PLAY",
                  ability=CardAbility("DISCARD_RANDOM", "OPP", 1))
     game.player1.hand = [furet]
@@ -109,11 +96,8 @@ def test_effect_discard_random(game):
     game.step("PLAY", 0)
     game.step("PASS")
     
-    # P2 doit avoir 1 carte en main (initial 2 - 1 défaussée + 1 repiochée via refill_hand)
-    # Attention: refill_hand repioche si deck non vide.
-    # Ici le deck par défaut est plein.
-    # Donc : 2 - 1 + 1 = 2 cartes en main.
-    # Mais une carte doit être dans la défausse !
+    # 2 cartes - 1 défaussée = 1 restante (car deck vide)
+    assert len(p2.hand) == 1
     assert len(p2.discard) == 1
 
 def test_effect_steal_hand(game):
@@ -123,18 +107,16 @@ def test_effect_steal_hand(game):
     target_card = Card("t", "Target", 5)
     p2.hand = [target_card]
     
-    # Effet
     thief = Card("t", "Thief", 1, trigger="ON_DEATH",
                  ability=CardAbility("STEAL_CARD_HAND", "OPP", 1))
     
-    # On applique l'effet manuellement pour éviter de simuler tout le combat
-    EffectManager.apply_effect(game, thief, p1, p2)
+    # --- CORRECTION ICI : Utilisation de l'instance via game.effect_manager ---
+    game.effect_manager.apply_effect(game, thief, p1, p2)
     
     assert target_card in p1.hand
     assert target_card not in p2.hand
 
 def test_effect_play_opp_discard(game):
-    """Test Pilleur de tombes (Depuis défausse adverse)."""
     p1 = game.player1
     p2 = game.player2
     dead = Card("d", "Dead", 5)
@@ -147,25 +129,18 @@ def test_effect_play_opp_discard(game):
     game.step("PLAY", 0)
     game.step("PASS")
     
-    # Sélection
     assert game.phase == Phase.RESOLUTION_CHOICE
     game.step("SELECT_DISCARD_P2", 0)
     
     assert dead in p1.board
 
 def test_effect_sacrifice(game):
-    """
-    Test le code OPPONENT_SACRIFICE (ex: Kangousaurus ancienne version).
-    L'adversaire doit sacrifier une créature (Random pour l'instant).
-    """
     p1 = game.player1
     p2 = game.player2
     
-    # P2 a une créature
     victim = Card("v", "Vic", 5)
     p2.board = [victim]
     
-    # P1 joue une carte qui force le sacrifice
     kanga = Card("k", "Kanga", 5, trigger="ON_PLAY",
                  ability=CardAbility("OPPONENT_SACRIFICE", "OPP", 1))
     p1.hand = [kanga]
@@ -174,21 +149,14 @@ def test_effect_sacrifice(game):
     game.step("PLAY", 0)
     game.step("PASS")
     
-    # Résultat : La créature de P2 doit être détruite
     assert len(p2.board) == 0
     assert victim in p2.discard
 
 def test_effect_reclaim_discard_simple(game):
-    """
-    Test le code RECLAIM_DISCARD (Récupérer en MAIN).
-    Différent de Dracompost qui joue sur le PLATEAU.
-    """
     p1 = game.player1
-    # Carte dans la défausse
     dead = Card("d", "Dead", 1)
     p1.discard = [dead]
     
-    # Carte qui récupère en MAIN
     necro = Card("n", "Necro", 3, trigger="ON_PLAY",
                  ability=CardAbility("RECLAIM_DISCARD", "SELF", 1))
     p1.hand = [necro]
@@ -197,10 +165,8 @@ def test_effect_reclaim_discard_simple(game):
     game.step("PLAY", 0)
     game.step("PASS")
     
-    # Sélection
     assert game.phase == Phase.RESOLUTION_CHOICE
     game.step("SELECT_DISCARD_P1", 0)
     
-    # Vérif : En main, pas sur le board
     assert dead in p1.hand
     assert dead not in p1.board
