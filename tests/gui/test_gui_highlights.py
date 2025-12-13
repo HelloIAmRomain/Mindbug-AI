@@ -1,7 +1,7 @@
 import pytest
 import pygame
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import Mock, MagicMock, patch
 from mindbug_gui.renderer import GameRenderer
 from mindbug_engine.models import Card
 from mindbug_engine.rules import Phase
@@ -17,8 +17,12 @@ def renderer_with_spy(game):
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
     
+    # Créer un faux Confi
+    mock_config = Mock()
+    mock_config.debug_mode = True # ou False selon le besoin
+    mock_config.game_mode = "DEV"
     # On instancie le renderer
-    renderer = GameRenderer(screen, game)
+    renderer = GameRenderer(screen, game, config=mock_config)
     
     # ON REMPLACE LA MÉTHODE DE DESSIN PAR UN ESPION (MOCK)
     renderer._draw_card = MagicMock()

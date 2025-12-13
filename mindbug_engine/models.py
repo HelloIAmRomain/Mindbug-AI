@@ -101,7 +101,6 @@ class CardLoader:
                 keywords=entry.get("keywords", []),
                 trigger=entry.get("trigger"),
                 ability=ability,
-                # CORRECTION ICI : On utilise "set_name" pour correspondre au __init__
                 set_name=entry.get("set", "FIRST_CONTACT"), 
                 image_path=entry.get("image")
             )

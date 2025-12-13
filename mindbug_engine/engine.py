@@ -16,7 +16,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 class MindbugGame:
-    # --- MODIFICATION ICI : Ajout de active_sets=None ---
+    # --- MODIFICATION ICI : active_sets est bien présent pour corriger le crash ---
     def __init__(self, deck_path=None, active_card_ids=None, active_sets=None):
         
         if deck_path is None:
@@ -25,10 +25,10 @@ class MindbugGame:
         # 1. Loading ALL available cards (The "Pack")
         all_cards_loaded = CardLoader.load_deck(deck_path)
         
-        # --- MODIFICATION ICI : Filtrage par Set ---
+        # --- FILTRAGE PAR SET ---
         if active_sets:
             # On ne garde que les cartes dont le set est dans la liste active
-            # getattr(c, 'set', ...) protège contre les cartes qui n'auraient pas l'attribut
+            # getattr securise l'accès si une carte n'a pas l'attribut 'set'
             all_cards = [c for c in all_cards_loaded if getattr(c, 'set', 'FIRST_CONTACT') in active_sets]
             
             # Sécurité : Si le filtre vide tout, on garde tout le monde
@@ -37,7 +37,7 @@ class MindbugGame:
                 all_cards = all_cards_loaded
         else:
             all_cards = all_cards_loaded
-        # -------------------------------------------
+        # ------------------------
         
         # 2. Filtering & Completion (Card IDs from Deck Builder)
         if active_card_ids:
@@ -87,7 +87,7 @@ class MindbugGame:
         self.turn_count = 1
         self.winner = None
         
-        self.pending_card: Optional[Card] = None       
+        self.pending_card: Optional[Card] = None        
         self.pending_attacker: Optional[Card] = None 
         self.selection_context = None
 
