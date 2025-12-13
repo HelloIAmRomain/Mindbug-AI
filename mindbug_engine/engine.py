@@ -5,33 +5,41 @@ from typing import Optional, List, Tuple
 from .models import Card, Player, CardLoader
 from .rules import Phase, Keyword, CombatUtils
 from .effects import EffectManager
-from constants import PATH_DATA  # Importing PATH_DATA from constants
+from constants import PATH_DATA
 
 # --- HELPER FUNCTION FOR PYINSTALLER ---
 def resource_path(relative_path):
-    """
-    Gets the absolute path to the resource.
-    Works for development (local) and for PyInstaller (exe).
-    """
     try:
-        # PyInstaller creates a temporary folder and stores the path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
-
     return os.path.join(base_path, relative_path)
 
 class MindbugGame:
-    def __init__(self, deck_path=None, active_card_ids=None):
+    # --- MODIFICATION ICI : active_sets est bien présent pour corriger le crash ---
+    def __init__(self, deck_path=None, active_card_ids=None, active_sets=None):
         
         if deck_path is None:
-            # Using PATH_DATA from constants.py if available, or fallback
             deck_path = PATH_DATA if os.path.exists(PATH_DATA) else resource_path(os.path.join("data", "cards.json"))
             
         # 1. Loading ALL available cards (The "Pack")
-        all_cards = CardLoader.load_deck(deck_path)
+        all_cards_loaded = CardLoader.load_deck(deck_path)
         
-        # 2. Filtering & Completion
+        # --- FILTRAGE PAR SET ---
+        if active_sets:
+            # On ne garde que les cartes dont le set est dans la liste active
+            # getattr securise l'accès si une carte n'a pas l'attribut 'set'
+            all_cards = [c for c in all_cards_loaded if getattr(c, 'set', 'FIRST_CONTACT') in active_sets]
+            
+            # Sécurité : Si le filtre vide tout, on garde tout le monde
+            if not all_cards:
+                print(f"[Engine] Attention : Aucun set correspondant à {active_sets}. Chargement de tout le deck.")
+                all_cards = all_cards_loaded
+        else:
+            all_cards = all_cards_loaded
+        # ------------------------
+        
+        # 2. Filtering & Completion (Card IDs from Deck Builder)
         if active_card_ids:
             # A. First take those specifically chosen by the player
             self.full_deck = [c for c in all_cards if c.id in active_card_ids]
@@ -57,11 +65,11 @@ class MindbugGame:
                     print("[Engine] Warning: Not enough cards in database to reach 20!")
                     self.full_deck.extend(available_pool)
         else:
-            # No selection: Take the whole pack
+            # No selection: Take the whole pack (filtered by set)
             self.full_deck = list(all_cards)
             
         # 3. UI Reference and Shuffle
-        self.all_cards_ref = list(all_cards) # UI needs to know all possible images (even unplayed ones) for the menu
+        self.all_cards_ref = list(all_cards) # UI needs to know all possible images
         random.shuffle(self.full_deck)
         
         # 4. Player Setup
@@ -79,16 +87,16 @@ class MindbugGame:
         self.turn_count = 1
         self.winner = None
         
-        self.pending_card: Optional[Card] = None      
+        self.pending_card: Optional[Card] = None        
         self.pending_attacker: Optional[Card] = None 
         self.selection_context = None
 
-        self.end_turn_pending = False       
+        self.end_turn_pending = False        
         self.mindbug_replay_pending = False
         self.frenzy_candidate = None
 
         # 6. Effect Manager Instantiation
-        self.effect_manager = EffectManager() # Instantiate the EffectManager
+        self.effect_manager = EffectManager()
     
     def _setup_player(self, player):
         for _ in range(5):
@@ -131,7 +139,7 @@ class MindbugGame:
         if card.ability and card.trigger == "PASSIVE" and card.ability.code == "BOOST_IF_MY_TURN":
              if is_my_turn: current += card.ability.value
 
-        # 3. Ally Turn Bonus (Urchins - CORRECTED: Exclude self if requested)
+        # 3. Ally Turn Bonus
         for ally in board:
             if ally == card: continue 
             if ally.ability and ally.trigger == "PASSIVE" and ally.ability.code == "BOOST_ALLIES_IF_MY_TURN":
@@ -179,7 +187,6 @@ class MindbugGame:
                     idx = player.board.index(self.frenzy_candidate)
                     moves.append(("ATTACK", idx))
                 # Still allow playing a card? 
-                # Leaving option to play (strategic).
                 for i in range(len(player.hand)): moves.append(("PLAY", i))
             else:
                 # Normal case
@@ -342,41 +349,31 @@ class MindbugGame:
             
             att_dead, blk_dead = CombatUtils.simulate_combat(attacker, blocker)
             
-            # Poison Management (Check dynamic keywords if needed)
             if Keyword.POISON.value in attacker.keywords: blk_dead = True
             if Keyword.POISON.value in blocker.keywords: att_dead = True
 
-            # Apply Damage / Deaths
             if att_dead: self._apply_lethal_damage(attacker, attacker_owner)
             if blk_dead: self._apply_lethal_damage(blocker, defender_owner)
 
         self.pending_attacker = None
         
-        # --- CRITICAL FIX : INTERRUPTION ON DEATH ---
-        # If a Bomb Toad died, game switched to RESOLUTION_CHOICE.
-        # Must stop function HERE to not overwrite state.
         if self.phase == Phase.RESOLUTION_CHOICE:
             print("   -> Combat end suspended pending selection (Death effect)...")
             self.end_turn_pending = True
             return 
-        # --------------------------------------------------
 
         # --- FRENZY MANAGEMENT ---
-        # Check if attacker is still alive on board
         survived = (attacker in attacker_owner.board)
         has_frenzy = Keyword.FRENZY.value in attacker.keywords
         is_bonus_attack = (self.frenzy_candidate == attacker)
         
-        # Default reset to not block subsequent turns
         self.frenzy_candidate = None
         
         if survived and has_frenzy and not is_bonus_attack:
             print(f"> FRENZY ! {attacker.name} can attack a second time.")
             self.frenzy_candidate = attacker
-            # Return hand to attacker
             self._switch_active_player()
 
-            # Force maintain turn
             if self.active_player_idx == 0: self.phase = Phase.P1_MAIN
             else: self.phase = Phase.P2_MAIN
             
@@ -413,8 +410,6 @@ class MindbugGame:
             print(f"   -> {initiator.name} forces {selected_card.name} to block !")
             self.selection_context = None
             
-            # --- CRITICAL : RESET PHASE BEFORE COMBAT ---
-            # If RESOLUTION_CHOICE remains, _resolve_combat will think it's an interruption
             if self.active_player_idx == 0: self.phase = Phase.P1_MAIN
             else: self.phase = Phase.P2_MAIN
             
@@ -468,7 +463,7 @@ class MindbugGame:
             card.reset() 
             if card.trigger == "ON_DEATH":
                 opponent = self.player2 if owner == self.player1 else self.player1
-                self.effect_manager.apply_effect(self, card, owner, opponent) # Using EffectManager instance
+                self.effect_manager.apply_effect(self, card, owner, opponent)
 
     def _put_card_on_board(self, player, card):
         player.board.append(card)
@@ -480,7 +475,7 @@ class MindbugGame:
                 is_silenced = True
                 break
         if not is_silenced and card.trigger == "ON_PLAY":
-            self.effect_manager.apply_effect(self, card, player, opponent) # Using EffectManager instance
+            self.effect_manager.apply_effect(self, card, player, opponent)
 
     def _switch_active_player(self):
         self.active_player_idx = 1 - self.active_player_idx

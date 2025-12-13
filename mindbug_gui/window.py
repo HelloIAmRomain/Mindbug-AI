@@ -23,10 +23,13 @@ class MindbugGUI:
         self.config = config
         
         # 2. Initialisation du Moteur (Modèle)
-        self.game = MindbugGame(active_card_ids=self.config.active_card_ids)
+        self.game = MindbugGame(
+            active_card_ids=self.config.active_card_ids,
+            active_sets=getattr(self.config, "active_sets", None) # On passe les sets
+        )
         
         # 3. Initialisation du Rendu (Vue)
-        self.renderer = GameRenderer(self.screen, self.game, debug_mode=self.config.debug_mode)
+        self.renderer = GameRenderer(self.screen, self.game, config=self.config)
         
         # 4. États de l'interface
         self.viewing_discard_owner = None # Si non None, affiche l'overlay défausse
@@ -36,8 +39,8 @@ class MindbugGUI:
         self.last_active_player = self.game.active_player
         self.show_curtain = False
         
-        # Si on lance en Hotseat, on active le rideau dès le début
-        if getattr(self.config, "game_mode", "HOTSEAT") == "HOTSEAT":
+        # On active le rideau SEULEMENT si mode HOTSEAT et PAS Debug
+        if self.config.game_mode == "HOTSEAT" and not self.config.debug_mode:
              self.show_curtain = True
 
     def run(self):
@@ -51,7 +54,7 @@ class MindbugGUI:
         while running:
             
             # --- 0. LOGIQUE HOTSEAT (Changement de tour) ---
-            if getattr(self.config, "game_mode", "HOTSEAT") == "HOTSEAT":
+            if getattr(self.config, "game_mode", "HOTSEAT") == "HOTSEAT" and not self.config.debug_mode:
                 if self.game.active_player != self.last_active_player:
                     self.show_curtain = True
                     self.last_active_player = self.game.active_player
@@ -139,18 +142,17 @@ class MindbugGUI:
                         z_type = zone["type"]
                         is_hidden = False
                         
-                        # Si on n'est pas en mode debug, on vérifie les mains adverses
-                        if not getattr(self.config, "debug_mode", False):
-                            # Si c'est la main du J1 mais que c'est au tour du J2
+                        # NOUVEAU : Si mode DEV ou DEBUG, on voit tout !
+                        can_see_everything = self.config.debug_mode or (getattr(self.config, "game_mode", "") == "DEV")
+
+                        if not can_see_everything:
+                            # Logique classique Hotseat
                             if "HAND_P1" in z_type and self.game.active_player != self.game.player1:
                                 is_hidden = True
-                            # Si c'est la main du J2 mais que c'est au tour du J1
                             elif "HAND_P2" in z_type and self.game.active_player != self.game.player2:
                                 is_hidden = True
                         
-                        # Si la carte est cachée, on ne fait RIEN (on ne zoome pas)
-                        if is_hidden:
-                            continue 
+                        if is_hidden: continue
                         # -----------------------------------------------
 
                         card_found = self._get_card_from_zone(z_type, zone["index"])
