@@ -5,15 +5,16 @@ from typing import Optional, List, Tuple
 from .models import Card, Player, CardLoader
 from .rules import Phase, Keyword, CombatUtils
 from .effects import EffectManager
+from constants import PATH_DATA  # Importing PATH_DATA from constants
 
-# --- FONCTION HELPER POUR PYINSTALLER ---
+# --- HELPER FUNCTION FOR PYINSTALLER ---
 def resource_path(relative_path):
     """
-    Obtient le chemin absolu vers la ressource.
-    Fonctionne pour le développement (local) et pour PyInstaller (exe).
+    Gets the absolute path to the resource.
+    Works for development (local) and for PyInstaller (exe).
     """
     try:
-        # PyInstaller crée un dossier temporaire et stocke le chemin dans _MEIPASS
+        # PyInstaller creates a temporary folder and stores the path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
@@ -21,24 +22,58 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 class MindbugGame:
-    def __init__(self, deck_path=None):
-        # Si aucun chemin n'est fourni, on utilise le chemin "intelligent"
+    def __init__(self, deck_path=None, active_card_ids=None):
+        
         if deck_path is None:
-            deck_path = resource_path(os.path.join("data", "cards.json"))
-
-        # 1. Chargement du Deck
-        loaded_cards = CardLoader.load_deck(deck_path)
-        self.all_cards_ref = list(loaded_cards) 
-        self.full_deck = list(loaded_cards)
+            # Using PATH_DATA from constants.py if available, or fallback
+            deck_path = PATH_DATA if os.path.exists(PATH_DATA) else resource_path(os.path.join("data", "cards.json"))
+            
+        # 1. Loading ALL available cards (The "Pack")
+        all_cards = CardLoader.load_deck(deck_path)
+        
+        # 2. Filtering & Completion
+        if active_card_ids:
+            # A. First take those specifically chosen by the player
+            self.full_deck = [c for c in all_cards if c.id in active_card_ids]
+            
+            # B. Vital Minimum Verification (20 cards : 10 per player)
+            current_count = len(self.full_deck)
+            min_required = 20
+            
+            if current_count < min_required:
+                missing = min_required - current_count
+                print(f"[Engine] Selected deck too small ({current_count}). Adding {missing} random cards...")
+                
+                # Identify cards NOT already selected
+                selected_ids = set(c.id for c in self.full_deck)
+                available_pool = [c for c in all_cards if c.id not in selected_ids]
+                
+                # Complete with random cards
+                if len(available_pool) >= missing:
+                    fillers = random.sample(available_pool, missing)
+                    self.full_deck.extend(fillers)
+                else:
+                    # Extreme case: Even with everything else, not enough for 20 cards
+                    print("[Engine] Warning: Not enough cards in database to reach 20!")
+                    self.full_deck.extend(available_pool)
+        else:
+            # No selection: Take the whole pack
+            self.full_deck = list(all_cards)
+            
+        # 3. UI Reference and Shuffle
+        self.all_cards_ref = list(all_cards) # UI needs to know all possible images (even unplayed ones) for the menu
         random.shuffle(self.full_deck)
         
+        # 4. Player Setup
         self.player1 = Player(name="P1")
         self.player2 = Player(name="P2")
         self.players = [self.player1, self.player2]
         
+        # Distribution (5 hand + 5 deck = 10 per player)
         self._setup_player(self.player1)
         self._setup_player(self.player2)
         
+        # 5. Initial State
         self.active_player_idx = 0 
         self.phase = Phase.P1_MAIN
         self.turn_count = 1
@@ -50,7 +85,10 @@ class MindbugGame:
 
         self.end_turn_pending = False       
         self.mindbug_replay_pending = False
-        self.frenzy_candidate = None 
+        self.frenzy_candidate = None
+
+        # 6. Effect Manager Instantiation
+        self.effect_manager = EffectManager() # Instantiate the EffectManager
     
     def _setup_player(self, player):
         for _ in range(5):
@@ -72,7 +110,7 @@ class MindbugGame:
     def opponent(self):
         return self.players[1 - self.active_player_idx]
 
-    # --- CALCUL DE PUISSANCE ---
+    # --- POWER CALCULATION ---
     def calculate_real_power(self, card: Card) -> int:
         current = card.power
         turn_owner = self.active_player
@@ -83,19 +121,19 @@ class MindbugGame:
         board = card_owner.board
         is_my_turn = (card_owner == turn_owner)
 
-        # 1. Bonus Alliés
+        # 1. Ally Bonus
         for ally in board:
             if ally == card: continue
             if ally.ability and ally.trigger == "PASSIVE" and ally.ability.code == "BOOST_ALLIES":
                 current += ally.ability.value
 
-        # 2. Bonus tour
+        # 2. Turn Bonus
         if card.ability and card.trigger == "PASSIVE" and card.ability.code == "BOOST_IF_MY_TURN":
              if is_my_turn: current += card.ability.value
 
-        # 3. Bonus Alliés tour (Oursins - CORRIGÉ: Exclure soi-même si demandé)
+        # 3. Ally Turn Bonus (Urchins - CORRECTED: Exclude self if requested)
         for ally in board:
-            if ally == card: continue # <--- CORRECTION BUG OURSIN (ne se buff pas lui-même)
+            if ally == card: continue 
             if ally.ability and ally.trigger == "PASSIVE" and ally.ability.code == "BOOST_ALLIES_IF_MY_TURN":
                 if is_my_turn: current += ally.ability.value
         
@@ -103,7 +141,7 @@ class MindbugGame:
         if card.ability and card.trigger == "PASSIVE" and card.ability.code == "BOOST_AND_FRENZY_IF_ALONE":
             if len(board) == 1: current += card.ability.value
         
-        # 5. Debuff Ennemis
+        # 5. Enemy Debuff
         opp_board = self.player2.board if card_owner == self.player1 else self.player1.board
         for enemy in opp_board:
             if enemy.ability and enemy.trigger == "PASSIVE" and enemy.ability.code == "DEBUFF_ENEMIES":
@@ -135,16 +173,16 @@ class MindbugGame:
         if self.winner: return []
 
         if self.phase in [Phase.P1_MAIN, Phase.P2_MAIN]:
-            # Si Furie active, on doit attaquer avec la carte Furie
+            # If Frenzy active, must attack with Frenzy card
             if self.frenzy_candidate:
                 if self.frenzy_candidate in player.board:
                     idx = player.board.index(self.frenzy_candidate)
                     moves.append(("ATTACK", idx))
-                # On autorise quand même de jouer une carte à la place ? 
-                # Dans le doute, on laisse l'option de jouer (stratégique).
+                # Still allow playing a card? 
+                # Leaving option to play (strategic).
                 for i in range(len(player.hand)): moves.append(("PLAY", i))
             else:
-                # Cas normal
+                # Normal case
                 for i in range(len(player.hand)): moves.append(("PLAY", i))
                 for i in range(len(player.board)): moves.append(("ATTACK", i))
 
@@ -206,10 +244,10 @@ class MindbugGame:
 
     def ask_for_selection(self, candidates: List[Card], effect_code: str, count: int, initiator: Player):
         if not candidates:
-            print("   -> Aucune cible disponible (Sélection annulée).")
+            print("   -> No target available (Selection cancelled).")
             return
 
-        print(f"⌛ EN ATTENTE : {initiator.name} doit choisir une cible pour {effect_code}.")
+        print(f"⌛ WAITING : {initiator.name} must choose a target for {effect_code}.")
         self.selection_context = {
             "candidates": candidates,
             "effect_code": effect_code,
@@ -222,7 +260,7 @@ class MindbugGame:
         if not (0 <= hand_idx < len(self.active_player.hand)): return
         card = self.active_player.hand.pop(hand_idx)
         self.pending_card = card
-        print(f"> Pose {card.name}. Mindbug ?")
+        print(f"> Plays {card.name}. Mindbug ?")
         
         self.frenzy_candidate = None 
         self.refill_hand(self.active_player)
@@ -233,12 +271,12 @@ class MindbugGame:
         thief = self.active_player
         if thief.mindbugs > 0:
             thief.mindbugs -= 1
-            print(f"> MINDBUG ! {thief.name} vole {self.pending_card.name} !")
+            print(f"> MINDBUG ! {thief.name} steals {self.pending_card.name} !")
             self._put_card_on_board(thief, self.pending_card)
             self.pending_card = None
             
             if self.phase == Phase.RESOLUTION_CHOICE:
-                print("   -> Fin de tour Mindbug suspendue en attente de sélection...")
+                print("   -> Mindbug turn end suspended pending selection...")
                 self.mindbug_replay_pending = True
             else:
                 self._execute_mindbug_replay()
@@ -247,18 +285,18 @@ class MindbugGame:
 
     def _execute_mindbug_replay(self):
         self._switch_active_player() 
-        print(f"> Le tour revient à {self.active_player.name} (Rejoue son tour).")
+        print(f"> Turn returns to {self.active_player.name} (Replays turn).")
         self.phase = Phase.P1_MAIN if self.active_player_idx == 0 else Phase.P2_MAIN
 
     def _action_pass_mindbug(self):
-        print("> Refus du Mindbug.")
+        print("> Mindbug refused.")
         self._switch_active_player()
         owner = self.active_player
         self._put_card_on_board(owner, self.pending_card)
         self.pending_card = None
         
         if self.phase == Phase.RESOLUTION_CHOICE:
-            print("   -> Fin de tour suspendue en attente de sélection...")
+            print("   -> Turn end suspended pending selection...")
             self.end_turn_pending = True
         else:
             self._end_turn()
@@ -267,10 +305,10 @@ class MindbugGame:
         if not (0 <= board_idx < len(self.active_player.board)): return
         attacker = self.active_player.board[board_idx]
         self.pending_attacker = attacker
-        print(f"> Attaque avec {attacker.name} !")
+        print(f"> Attack with {attacker.name} !")
 
         if Keyword.HUNTER.value in attacker.keywords and self.opponent.board:
-            print(f"> CHASSEUR : Veuillez sélectionner la créature adverse qui doit bloquer.")
+            print(f"> HUNTER : Please select the opponent creature that must block.")
             self.ask_for_selection(self.opponent.board, "HUNTER_TARGET", 1, self.active_player)
             return
 
@@ -284,7 +322,7 @@ class MindbugGame:
         if not CombatUtils.can_block(attacker, blocker):
             self._resolve_combat(None) 
             return
-        print(f"> Bloque avec {blocker.name}.")
+        print(f"> Blocks with {blocker.name}.")
         self._resolve_combat(blocker)
 
     def _resolve_combat(self, blocker: Optional[Card]):
@@ -292,11 +330,11 @@ class MindbugGame:
         attacker_owner = self.player1 if attacker in self.player1.board else self.player2
         defender_owner = self.player2 if attacker_owner == self.player1 else self.player1
 
-        # 1. Calcul des puissances réelles (incluant bonus passifs)
+        # 1. Real power calculation (including passive bonuses)
         att_power = self.calculate_real_power(attacker)
         
         if blocker is None:
-            print(f"> Pas de blocage ! {defender_owner.name} perd 1 PV.")
+            print(f"> No block ! {defender_owner.name} loses 1 HP.")
             defender_owner.hp -= 1
         else:
             blk_power = self.calculate_real_power(blocker)
@@ -304,53 +342,52 @@ class MindbugGame:
             
             att_dead, blk_dead = CombatUtils.simulate_combat(attacker, blocker)
             
-            # Gestion Poison (Check des keywords dynamiques si besoin, ici keywords de base)
-            # Note: Si Requin Crabe a poison dynamiquement, assurez-vous que attacker.keywords est à jour
+            # Poison Management (Check dynamic keywords if needed)
             if Keyword.POISON.value in attacker.keywords: blk_dead = True
             if Keyword.POISON.value in blocker.keywords: att_dead = True
 
-            # Application des dégâts / Morts
+            # Apply Damage / Deaths
             if att_dead: self._apply_lethal_damage(attacker, attacker_owner)
             if blk_dead: self._apply_lethal_damage(blocker, defender_owner)
 
         self.pending_attacker = None
         
-        # --- CORRECTIF CRITIQUE : INTERRUPTION SUR MORT ---
-        # Si un Crapaud Bombe est mort, le jeu est passé en RESOLUTION_CHOICE.
-        # Il faut arrêter la fonction ICI pour ne pas écraser l'état.
+        # --- CRITICAL FIX : INTERRUPTION ON DEATH ---
+        # If a Bomb Toad died, game switched to RESOLUTION_CHOICE.
+        # Must stop function HERE to not overwrite state.
         if self.phase == Phase.RESOLUTION_CHOICE:
-            print("   -> Fin de combat suspendue en attente de sélection (Effet de mort)...")
+            print("   -> Combat end suspended pending selection (Death effect)...")
             self.end_turn_pending = True
             return 
         # --------------------------------------------------
 
-        # --- GESTION FURIE ---
-        # On vérifie si l'attaquant est toujours vivant sur le plateau
+        # --- FRENZY MANAGEMENT ---
+        # Check if attacker is still alive on board
         survived = (attacker in attacker_owner.board)
         has_frenzy = Keyword.FRENZY.value in attacker.keywords
         is_bonus_attack = (self.frenzy_candidate == attacker)
         
-        # Reset par défaut pour ne pas bloquer les tours suivants
+        # Default reset to not block subsequent turns
         self.frenzy_candidate = None
         
         if survived and has_frenzy and not is_bonus_attack:
-            print(f"> FURIE ! {attacker.name} peut attaquer une seconde fois.")
+            print(f"> FRENZY ! {attacker.name} can attack a second time.")
             self.frenzy_candidate = attacker
-            # Rendre la main a l'attaquant
+            # Return hand to attacker
             self._switch_active_player()
 
-            # On force le maintien du tour
+            # Force maintain turn
             if self.active_player_idx == 0: self.phase = Phase.P1_MAIN
             else: self.phase = Phase.P2_MAIN
             
-            return # <-- STOP : On ne finit pas le tour !
+            return # <-- STOP : Do not end turn !
 
-        # Fin de tour classique
+        # Standard turn end
         next_player = defender_owner
         self.active_player_idx = 0 if next_player == self.player1 else 1
         self.phase = Phase.P1_MAIN if self.active_player_idx == 0 else Phase.P2_MAIN
         self.turn_count += 1
-        print(f"--- Fin du tour. Au tour de {self.active_player.name} ---")
+        print(f"--- Turn end. Turn of {self.active_player.name} ---")
 
     def _action_resolve_selection(self, selected_card: Card):
         ctx = self.selection_context
@@ -358,11 +395,11 @@ class MindbugGame:
 
         effect = ctx["effect_code"]
         initiator = ctx["initiator"]
-        print(f"> Cible choisie : {selected_card.name}")
+        print(f"> Target chosen : {selected_card.name}")
 
         if effect == "DESTROY_CREATURE" or effect == "DESTROY_IF_FEWER_ALLIES":
             victim = self.player1 if selected_card in self.player1.board else self.player2
-            print(f"   -> {selected_card.name} est détruit.")
+            print(f"   -> {selected_card.name} is destroyed.")
             self._destroy_card(selected_card, victim)
         
         elif effect == "STEAL_CREATURE":
@@ -370,14 +407,14 @@ class MindbugGame:
             if selected_card in victim.board:
                 victim.board.remove(selected_card)
                 initiator.board.append(selected_card)
-                print(f"   -> {initiator.name} vole {selected_card.name}.")
+                print(f"   -> {initiator.name} steals {selected_card.name}.")
         
         elif effect == "HUNTER_TARGET":
-            print(f"   -> {initiator.name} force {selected_card.name} à bloquer !")
+            print(f"   -> {initiator.name} forces {selected_card.name} to block !")
             self.selection_context = None
             
-            # --- CRITIQUE : RÉINITIALISER LA PHASE AVANT LE COMBAT ---
-            # Si on laisse RESOLUTION_CHOICE, _resolve_combat va croire à une interruption
+            # --- CRITICAL : RESET PHASE BEFORE COMBAT ---
+            # If RESOLUTION_CHOICE remains, _resolve_combat will think it's an interruption
             if self.active_player_idx == 0: self.phase = Phase.P1_MAIN
             else: self.phase = Phase.P2_MAIN
             
@@ -390,19 +427,19 @@ class MindbugGame:
                 owner.discard.remove(selected_card)
                 initiator.hand.append(selected_card)
                 selected_card.reset()
-                print(f"   -> {initiator.name} récupère {selected_card.name}.")
+                print(f"   -> {initiator.name} reclaims {selected_card.name}.")
                 
         elif effect == "PLAY_FROM_OPP_DISCARD" or effect == "PLAY_FROM_MY_DISCARD":
             owner = self.player1 if selected_card in self.player1.discard else self.player2
             if selected_card in owner.discard:
                 owner.discard.remove(selected_card)
-                print(f"   -> {initiator.name} joue {selected_card.name} depuis la défausse !")
+                print(f"   -> {initiator.name} plays {selected_card.name} from discard !")
                 self._put_card_on_board(initiator, selected_card)
                 selected_card.reset()
 
         ctx["count"] -= 1
         if ctx["count"] <= 0:
-            print("   -> Fin de la sélection.")
+            print("   -> Selection end.")
             self.selection_context = None
             if self.mindbug_replay_pending:
                 self.mindbug_replay_pending = False
@@ -414,14 +451,14 @@ class MindbugGame:
                 if self.active_player_idx == 0: self.phase = Phase.P1_MAIN
                 else: self.phase = Phase.P2_MAIN
         else:
-            print(f"   -> Encore {ctx['count']} cible(s) à choisir...")
+            print(f"   -> Still {ctx['count']} target(s) to choose...")
 
     def _apply_lethal_damage(self, card: Card, owner: Player):
         if Keyword.TOUGH.value in card.keywords and not card.is_damaged:
-            print(f"> {card.name} est CORIACE ! Il survit.")
+            print(f"> {card.name} is TOUGH ! Survives.")
             card.is_damaged = True
         else:
-            print(f"> {card.name} est détruit.")
+            print(f"> {card.name} is destroyed.")
             self._destroy_card(card, owner)
 
     def _destroy_card(self, card: Card, owner: Player):
@@ -431,7 +468,7 @@ class MindbugGame:
             card.reset() 
             if card.trigger == "ON_DEATH":
                 opponent = self.player2 if owner == self.player1 else self.player1
-                EffectManager.apply_effect(self, card, owner, opponent)
+                self.effect_manager.apply_effect(self, card, owner, opponent) # Using EffectManager instance
 
     def _put_card_on_board(self, player, card):
         player.board.append(card)
@@ -439,11 +476,11 @@ class MindbugGame:
         is_silenced = False
         for opp_card in opponent.board:
             if opp_card.ability and opp_card.trigger == "PASSIVE" and opp_card.ability.code == "SILENCE_ON_PLAY":
-                print(f"> Effet annulé par {opp_card.name} (Silence) !")
+                print(f"> Effect cancelled by {opp_card.name} (Silence) !")
                 is_silenced = True
                 break
         if not is_silenced and card.trigger == "ON_PLAY":
-            EffectManager.apply_effect(self, card, player, opponent)
+            self.effect_manager.apply_effect(self, card, player, opponent) # Using EffectManager instance
 
     def _switch_active_player(self):
         self.active_player_idx = 1 - self.active_player_idx
@@ -454,7 +491,7 @@ class MindbugGame:
         self._switch_active_player()
         self.phase = Phase.P1_MAIN if self.active_player_idx == 0 else Phase.P2_MAIN
         self.turn_count += 1
-        print(f"--- Fin du tour. Au tour de {self.active_player.name} ---")
+        print(f"--- Turn end. Turn of {self.active_player.name} ---")
 
     def _check_win_condition(self):
         if self.player1.hp <= 0: self.winner = self.player2

@@ -1,116 +1,104 @@
 import json
-from dataclasses import dataclass, field
-from typing import List, Optional
+import os
+from typing import List, Optional, Dict, Any
 
-@dataclass
 class CardAbility:
-    """Structure machine-readable d'une capacité"""
-    code: str              # Ex: "DESTROY_CREATURE"
-    target: str            # Ex: "OPP", "SELF"
-    value: int = 0         # Valeur numérique (Ex: 1 carte, 3 dégâts)
-    
-    # --- NOUVEAUX CHAMPS (Conditions dynamiques) ---
-    condition: str = "ALWAYS"  # Type (MIN_POWER, MAX_POWER, CHOICE_USER...)
-    condition_value: int = 0   # Seuil (Ex: 6 pour "Puissance >= 6")
-    # -----------------------------------------------
+    """Représente l'effet spécial d'une carte."""
+    def __init__(self, code: str, target: str = "NONE", value: int = 0, condition: str = None, condition_value: int = 0):
+        self.code = code                # ex: "STEAL_CREATURE"
+        self.target = target            # ex: "OPP", "SELF"
+        self.value = value              # ex: 1 (nombre de cartes/dégâts)
+        self.condition = condition      # ex: "MAX_POWER"
+        self.condition_value = condition_value # ex: 6
 
-    keyword: str = ""      # Pour GIVE_KEYWORD
-
-@dataclass
-class Card:
-    id: str
-    name: str
-    power: int
-    keywords: List[str] = field(default_factory=list)
-    
-    trigger: Optional[str] = None      
-    ability: Optional[CardAbility] = None 
-    
-    text: str = "" 
-    image_path: str = "" # Lien vers l'image
-    
-    # États dynamiques
-    is_damaged: bool = False
-    
-    def __post_init__(self):
-        self.keywords = [k.upper() for k in self.keywords]
-
-    def copy(self):
-        return Card(
-            id=self.id,
-            name=self.name,
-            power=self.power,
-            keywords=list(self.keywords),
-            trigger=self.trigger,
-            ability=self.ability, 
-            text=self.text,
-            image_path=self.image_path
-        )
-    
     def __repr__(self):
-        extras = []
-        if self.keywords: extras.append(",".join(self.keywords))
-        if self.trigger: extras.append(f"⚡{self.trigger}")
-        status = " [🩸BLESSÉ]" if self.is_damaged else ""
-        info = f" | {' '.join(extras)}" if extras else ""
-        return f"[{self.name} ({self.power}){info}{status}]"
+        return f"Ability({self.code}, T:{self.target}, V:{self.value})"
 
-    def reset(self):
-        """Réinitialise l'état de la carte (soigne les blessures)."""
+class Card:
+    """
+    Objet de données représentant une carte.
+    Contient l'état statique (stats de base) et dynamique (dégâts, keywords copiés).
+    """
+    def __init__(self, id: str, name: str, power: int, keywords: List[str] = None, trigger: str = None, ability: Optional[CardAbility] = None, image_path: str = None):
+        self.id = id
+        self.name = name
+        self.power = power
+        
+        # Gestion des mots-clés dynamiques
+        self.base_keywords = list(keywords) if keywords else [] # Copie immuable
+        self.keywords = list(self.base_keywords)                # Liste modifiable
+        
+        self.trigger = trigger          # ex: "ON_PLAY", "ON_DEATH", "PASSIVE"
+        self.ability = ability
+        self.image_path = image_path
+        
+        # État en jeu
         self.is_damaged = False
 
-@dataclass
-class Player:
-    name: str
-    is_human: bool = False
-    hp: int = 3
-    mindbugs: int = 2
-    hand: List[Card] = field(default_factory=list)
-    board: List[Card] = field(default_factory=list)
-    discard: List[Card] = field(default_factory=list)
-    deck: List[Card] = field(default_factory=list) # Pioche personnelle
-    
+    def reset(self):
+        """Réinitialise la carte à son état d'origine (quand elle quitte le jeu)."""
+        self.is_damaged = False
+        self.keywords = list(self.base_keywords) # On retire les mots-clés volés (Requin)
+
     def __repr__(self):
-        return f"Player {self.name} (HP:{self.hp}, MB:{self.mindbugs})"
+        # Affichage compact pour le debug console
+        dmg = "*" if self.is_damaged else ""
+        return f"[{self.name}{dmg} ({self.power})]"
+
+class Player:
+    """Représente l'état d'un joueur."""
+    def __init__(self, name: str):
+        self.name = name
+        self.hp = 3
+        self.mindbugs = 2
+        
+        self.deck: List[Card] = []
+        self.hand: List[Card] = []
+        self.board: List[Card] = []
+        self.discard: List[Card] = []
+
+    def __repr__(self):
+        return f"Player({self.name}, HP:{self.hp}, MB:{self.mindbugs})"
 
 class CardLoader:
+    """Service de chargement des données depuis le JSON."""
+    
     @staticmethod
-    def load_deck(filepath: str) -> List[Card]:
+    def load_deck(file_path: str) -> List[Card]:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Fichier de cartes introuvable : {file_path}")
+
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except Exception as e:
-            print(f"Erreur chargement JSON: {e}")
+        except json.JSONDecodeError as e:
+            print(f"ERREUR CRITIQUE : JSON malformé ({file_path}) : {e}")
             return []
-        
-        full_deck = []
+
+        cards = []
         for entry in data:
-            ability_data = entry.get("ability")
-            ability_obj = None
-            if ability_data:
-                ability_obj = CardAbility(
-                    code=ability_data.get("code", "UNKNOWN"),
-                    target=ability_data.get("target", "ANY"),
-                    value=ability_data.get("value", 0),
-                    # Parsing des conditions
-                    condition=ability_data.get("condition", "ALWAYS"),
-                    condition_value=ability_data.get("condition_value", 0),
-                    keyword=ability_data.get("keyword", "")
+            # Parsing de l'abilité
+            ability = None
+            if "ability" in entry and entry["ability"]:
+                ab_data = entry["ability"]
+                ability = CardAbility(
+                    code=ab_data.get("code"),
+                    target=ab_data.get("target", "NONE"),
+                    value=ab_data.get("value", 0),
+                    condition=ab_data.get("condition"),
+                    condition_value=ab_data.get("condition_value", 0)
                 )
 
-            template_card = Card(
-                id=entry["id"],
-                name=entry["name"],
-                power=entry["power"],
+            # Création de la Carte
+            card = Card(
+                id=str(entry.get("id")), # Force string ID
+                name=entry.get("name", "Unknown"),
+                power=entry.get("power", 0),
                 keywords=entry.get("keywords", []),
                 trigger=entry.get("trigger"),
-                ability=ability_obj,
-                text=entry.get("text", ""),
-                image_path=entry.get("image", "")
+                ability=ability,
+                image_path=entry.get("image")
             )
+            cards.append(card)
             
-            count = entry.get("copies", 1)
-            for _ in range(count):
-                full_deck.append(template_card.copy())
-                
-        return full_deck
+        return cards
