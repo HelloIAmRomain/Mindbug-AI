@@ -13,7 +13,7 @@ class GameRenderer:
         self.screen = screen
         self.game = game_instance
         self.config = config
-        self.res_manager = res_manager # <--- NOUVEAU : Centralisation des assets
+        self.res_manager = res_manager
         self.debug = config.debug_mode
         
         self.click_zones = [] 
@@ -22,8 +22,7 @@ class GameRenderer:
         w, h = self.screen.get_size()
         self.layout = DynamicLayout(w, h)
         
-        # 2. Cache local pour les images REDIMENSIONNÉES uniquement
-        # (Le ResourceManager garde les originaux, nous on garde les versions à la bonne taille)
+        # 2. Cache local pour les images REDIMENSIONNÉES
         self.scaled_images = {}   
         
         self.zoomed_card = None
@@ -34,16 +33,11 @@ class GameRenderer:
     def handle_resize(self, new_w, new_h):
         """Appelé par le contrôleur quand la fenêtre change de taille."""
         self.layout.update(new_w, new_h)
-        
-        # On vide le cache des images redimensionnées car la taille des cartes a changé
         self.scaled_images.clear()
-        
-        # On met à jour les tailles de police
         self._update_fonts()
 
     def _update_fonts(self):
         """Récupère les polices à la bonne échelle depuis le ResourceManager."""
-        # On demande au manager les fonts calculées par le layout
         self.font_small = self.res_manager.get_font(self.layout.font_size_small, font_name="Arial")
         self.font_bold = self.res_manager.get_font(self.layout.font_size_std, bold=True, font_name="Arial")
         self.font_power = self.res_manager.get_font(self.layout.font_size_title, bold=True, font_name="Arial")
@@ -58,19 +52,15 @@ class GameRenderer:
         if not image_path:
             return None
 
-        # Clé unique pour le cache local (Chemin + Dimensions)
         cache_key = (image_path, width, height)
         
-        # 1. Vérifier le cache local (déjà redimensionné ?)
         if cache_key in self.scaled_images:
             return self.scaled_images[cache_key]
         
-        # 2. Demander l'original au Resource Manager
         original = self.res_manager.get_image(image_path)
         
         if original:
             try:
-                # 3. Redimensionner et stocker
                 scaled = pygame.transform.smoothscale(original, (width, height))
                 self.scaled_images[cache_key] = scaled
                 return scaled
@@ -106,7 +96,6 @@ class GameRenderer:
             hide_p1 = False
             hide_p2 = False
         else:
-            # Logique Hotseat normale
             if self.game.active_player == self.game.player1:
                 hide_p2 = True
                 hide_p1 = False
@@ -297,7 +286,6 @@ class GameRenderer:
             pygame.draw.rect(self.screen, COLOR_WHITE, rect, 2, border_radius=8)
             return
 
-        # NOUVEAU : On utilise la méthode helper qui gère cache et resize via res_manager
         img = self._get_card_image(card.image_path, self.layout.card_w, self.layout.card_h)
         
         if img:
@@ -434,7 +422,6 @@ class GameRenderer:
         x = cx - zw // 2
         y = cy - zh // 2
         
-        # NOUVEAU : On utilise l'helper qui interroge res_manager
         img = self._get_card_image(card.image_path, zw, zh)
         
         rect = pygame.Rect(x, y, zw, zh)
@@ -459,15 +446,7 @@ class GameRenderer:
         pow_surf = font_zoom.render(str(card.power), True, COLOR_BLACK)
         self.screen.blit(pow_surf, pow_surf.get_rect(center=(pcx, pcy)))
 
-        # Keywords
-        kw_y = y + zh - 30
-        for kw in card.keywords:
-            kw_surf = self.font_bold.render(kw, True, COLOR_WHITE)
-            bg_rect = kw_surf.get_rect(center=(cx, kw_y))
-            bg_rect.inflate_ip(16, 8)
-            pygame.draw.rect(self.screen, (0,0,0, 200), bg_rect, border_radius=5)
-            self.screen.blit(kw_surf, kw_surf.get_rect(center=bg_rect.center))
-            kw_y -= 30
+        # NOTE : Affichage des mots-clés supprimé ici
             
         title = self.font_hud.render("CARTE JOUÉE", True, (255, 215, 0))
         self.screen.blit(title, title.get_rect(center=(cx, y - 40)))
@@ -502,7 +481,6 @@ class GameRenderer:
         cx, cy = self.layout.screen_w // 2, self.layout.screen_h // 2
         rect = pygame.Rect(cx - zw//2, cy - zh//2, zw, zh)
 
-        # NOUVEAU : Helper avec res_manager
         img = self._get_card_image(card.image_path, zw, zh)
         
         if img:

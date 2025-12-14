@@ -1,93 +1,7 @@
 import pygame
 from constants import *
-from .components import Button, Toggle, CardThumbnail
-# Changement d'import suite à l'étape 1
+from mindbug_gui.components import Button, Toggle, CardThumbnail
 from mindbug_engine.loaders import CardLoader
-
-class MenuScreen:
-    """Écran principal du jeu : Jouer (Local), Options, Quitter."""
-    
-    def __init__(self, screen, config, res_manager):
-        self.screen = screen
-        self.config = config
-        self.res_manager = res_manager # On stocke le manager
-        self.clock = pygame.time.Clock()
-        
-        # On demande les polices au manager (plus de SysFont en dur)
-        self.font_title = self.res_manager.get_font(80, bold=True)
-        self.font_btn = self.res_manager.get_font(40, bold=True)
-        
-        self.buttons = []
-        self._init_layout() 
-
-    def _init_layout(self):
-        """Recalcule la position des éléments selon la taille actuelle de la fenêtre."""
-        w, h = self.screen.get_size()
-        cx = w // 2
-        cy = h // 2
-        
-        btn_w = int(w * 0.25) 
-        btn_h = int(h * 0.10) 
-        if btn_h > 80: btn_h = 80
-        
-        gap = int(btn_h * 1.2)
-        
-        self.buttons = [
-            Button(
-                (cx - btn_w//2, cy - gap, btn_w, btn_h),
-                "PvP (LOCAL)", self.font_btn, "PLAY_HOTSEAT",
-                color=COLOR_BTN_PLAY
-            ),
-            Button(
-                (cx - btn_w//2, cy, btn_w, btn_h), 
-                "PARAMÈTRES", self.font_btn, "SETTINGS",
-                color=COLOR_BTN_NORMAL
-            ),
-            Button(
-                (cx - btn_w//2, cy + gap, btn_w, btn_h), 
-                "QUITTER", self.font_btn, "QUIT", 
-                color=COLOR_BTN_QUIT
-            )
-        ]
-
-    def run(self):
-        """Boucle d'affichage du Menu."""
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return "QUIT"
-                
-                elif event.type == pygame.VIDEORESIZE:
-                    self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
-                    self._init_layout() 
-                
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    return "QUIT"
-                
-                for btn in self.buttons:
-                    if btn.is_clicked(event):
-                        if btn.action_id == "PLAY_HOTSEAT":
-                            self.config.game_mode = "HOTSEAT"
-                            return "PLAY"
-                        return btn.action_id
-
-            self.screen.fill(COLOR_BG_MENU)
-            
-            w, h = self.screen.get_size()
-            
-            title = self.font_title.render("MINDBUG AI", True, COLOR_BLACK)
-            title_rect = title.get_rect(center=(w // 2, h * 0.15))
-            self.screen.blit(title, title_rect)
-            
-            for btn in self.buttons:
-                btn.draw(self.screen)
-            
-            pygame.display.flip()
-            self.clock.tick(FPS_CAP)
-            
-        return "QUIT"
-
 
 class SettingsScreen:
     """Écran de configuration, gestion des Sets et sélection de deck."""
@@ -95,20 +9,17 @@ class SettingsScreen:
     def __init__(self, screen, config, res_manager):
         self.screen = screen
         self.config = config
-        self.res_manager = res_manager # On stocke le manager
+        self.res_manager = res_manager
         self.clock = pygame.time.Clock()
         
-        # Chargement des polices via le manager
         self.font = self.res_manager.get_font(20)
         self.font_title = self.res_manager.get_font(40, bold=True)
         self.font_popup = self.res_manager.get_font(30, bold=True)
         
         self.is_confirming = False
         
-        # Chargement des données (via le nouveau loader)
+        # Données
         self.all_cards = CardLoader.load_deck(PATH_DATA)
-        
-        # Auto-découverte des sets
         self.available_sets = sorted(list(set(c.set for c in self.all_cards)))
         
         # UI Elements
@@ -121,13 +32,11 @@ class SettingsScreen:
         
         self._init_layout()
 
-    # NOTE : La méthode _load_images a été supprimée car remplacée par res_manager
-
     def _init_layout(self):
         w, h = self.screen.get_size()
         cx, cy = w // 2, h // 2
         
-        # --- A. OPTIONS GÉNÉRALES ---
+        # --- OPTIONS ---
         opt_y = int(h * 0.12)
         col1_x = int(w * 0.15)
         
@@ -137,7 +46,7 @@ class SettingsScreen:
             Toggle(col1_x, opt_y + 80, "Animations", self.font, initial_value=self.config.enable_effects),
         ]
         
-        # --- B. SÉLECTION DES SETS ---
+        # --- SETS ---
         col_set_x = int(w * 0.55) 
         set_y = opt_y
         
@@ -159,7 +68,7 @@ class SettingsScreen:
             self.toggles_sets.append(tog)
             set_y += 40
             
-        # --- C. DECK BUILDER ---
+        # --- GRILLE ---
         start_x = int(w * 0.05)
         start_y = int(h * 0.35)
         
@@ -190,12 +99,7 @@ class SettingsScreen:
             if self.config.active_card_ids: 
                 is_sel = card.id in self.config.active_card_ids
             
-            # --- MODIFICATION IMPORTANTE ICI ---
-            # On récupère l'image via le manager
             img = self.res_manager.get_image(card.image_path)
-            
-            # Astuce pour garder la compatibilité avec CardThumbnail qui attend un dict
-            # On crée un mini-cache local pour cette carte
             fake_cache = {card.image_path: img}
             
             self.thumbnails.append(CardThumbnail(
@@ -226,7 +130,6 @@ class SettingsScreen:
                     self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
                     self._init_layout()
                 
-                # Update Dynamique Sets
                 sets_changed = False
                 for t_set in self.toggles_sets:
                     if t_set.handle_event(event):
@@ -236,7 +139,6 @@ class SettingsScreen:
                     self._init_layout()
                     continue 
 
-                # Popup
                 if self.is_confirming:
                     if self.btn_yes.is_clicked(event):
                         self.save_config()
@@ -247,7 +149,6 @@ class SettingsScreen:
                          self.is_confirming = False
                     continue 
 
-                # Inputs Normaux
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self.is_confirming = True 
                     continue
@@ -310,12 +211,10 @@ class SettingsScreen:
         self.btn_no.draw(self.screen)
 
     def save_config(self):
-        # 1. Sauvegarde Options
         self.config.debug_mode = self.toggles_options[0].value
         self.config.enable_sound = self.toggles_options[1].value
         self.config.enable_effects = self.toggles_options[2].value
         
-        # 2. Sauvegarde Sets
         new_active_sets = [t.set_id for t in self.toggles_sets if t.value]
         if not new_active_sets:
             if "FIRST_CONTACT" in self.available_sets:
@@ -324,7 +223,6 @@ class SettingsScreen:
                 new_active_sets = [self.available_sets[0]]
         self.config.active_sets = new_active_sets
 
-        # 3. Sauvegarde Cartes
         visible_selected = {t.card.id for t in self.thumbnails if t.is_selected}
         previous_selected = set(self.config.active_card_ids) if self.config.active_card_ids else set()
         visible_ids = {t.card.id for t in self.thumbnails}

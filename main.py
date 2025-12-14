@@ -8,7 +8,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from constants import WINDOW_TITLE
 from config import GameConfig
-from mindbug_gui.menu import MenuScreen, SettingsScreen
+from mindbug_gui.screens.menu_screen import MenuScreen
+from mindbug_gui.screens.settings_screen import SettingsScreen
 from mindbug_gui.window import MindbugGUI
 from mindbug_gui.resource_manager import ResourceManager
 
