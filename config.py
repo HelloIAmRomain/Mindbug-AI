@@ -1,6 +1,6 @@
 from settings import SettingsManager
 from constants import PATH_DATA
-from mindbug_engine.models import CardLoader
+from mindbug_engine.loaders import CardLoader
 
 class GameConfig:
     def __init__(self):

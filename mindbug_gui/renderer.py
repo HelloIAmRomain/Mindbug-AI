@@ -1,19 +1,20 @@
 import pygame
-import os
 from constants import *
 from mindbug_engine.rules import Phase
 from .layout import DynamicLayout
 
 class GameRenderer:
     """
-    Responsable de l'affichage.
-    S'adapte dynamiquement à la taille de la fenêtre via DynamicLayout.
+    Responsable de l'affichage du jeu.
+    Utilise le ResourceManager pour les assets et DynamicLayout pour le positionnement.
     """
-    def __init__(self, screen, game_instance, config):
+    
+    def __init__(self, screen, game_instance, config, res_manager):
         self.screen = screen
         self.game = game_instance
-        self.config = config          # <--- ON STOCKE LA CONFIG
-        self.debug = config.debug_mode # On garde le raccourci pour le reste du code
+        self.config = config
+        self.res_manager = res_manager # <--- NOUVEAU : Centralisation des assets
+        self.debug = config.debug_mode
         
         self.click_zones = [] 
         
@@ -21,58 +22,62 @@ class GameRenderer:
         w, h = self.screen.get_size()
         self.layout = DynamicLayout(w, h)
         
-        # 2. Cache
-        self.original_images = {} # Images HD
-        self.scaled_images = {}   # Images redimensionnées
+        # 2. Cache local pour les images REDIMENSIONNÉES uniquement
+        # (Le ResourceManager garde les originaux, nous on garde les versions à la bonne taille)
+        self.scaled_images = {}   
         
-        self.zoomed_card = None   # Carte actuellement zoomée par clic droit
+        self.zoomed_card = None
 
-        # 3. Initialisation Assets
-        self._init_fonts()
-        self._load_original_assets()
-        self._rescale_assets()
+        # 3. Initialisation des Polices (via Manager)
+        self._update_fonts()
 
     def handle_resize(self, new_w, new_h):
         """Appelé par le contrôleur quand la fenêtre change de taille."""
-        self.layout.update(new_w, new_h) # Recalcul des positions
-        self._init_fonts()               # Recalcul des tailles de police
-        self._rescale_assets()           # Redimensionnement des cartes
-
-    def _init_fonts(self):
-        """Crée les polices à la bonne échelle."""
-        self.font_small = pygame.font.SysFont("Arial", self.layout.font_size_small)
-        self.font_bold = pygame.font.SysFont("Arial", self.layout.font_size_std, bold=True)
-        self.font_power = pygame.font.SysFont("Arial", self.layout.font_size_title, bold=True)
-        self.font_hud = pygame.font.SysFont("Arial", self.layout.font_size_title, bold=True)
-        self.font_popup = pygame.font.SysFont("Arial", self.layout.font_size_huge, bold=True)
-
-    def _load_original_assets(self):
-        """Charge les images une fois pour toutes (HD)."""
-        if not os.path.exists(PATH_ASSETS): return
+        self.layout.update(new_w, new_h)
         
-        cards_to_load = getattr(self.game, 'all_cards_ref', self.game.full_deck)
-        for card in cards_to_load:
-            if not card.image_path or card.image_path in self.original_images: continue
-            
-            full_path = os.path.join(PATH_ASSETS, card.image_path)
-            if os.path.exists(full_path):
-                try:
-                    img = pygame.image.load(full_path).convert_alpha()
-                    self.original_images[card.image_path] = img
-                except: pass
-
-    def _rescale_assets(self):
-        """Génère les images à la taille actuelle des cartes."""
+        # On vide le cache des images redimensionnées car la taille des cartes a changé
         self.scaled_images.clear()
-        target_size = (self.layout.card_w, self.layout.card_h)
         
-        for path, original in self.original_images.items():
-            if original:
-                try:
-                    self.scaled_images[path] = pygame.transform.smoothscale(original, target_size)
-                except ValueError:
-                    # Sécurité si la taille est trop petite (ex: fenêtre réduite au min)
-                    pass
+        # On met à jour les tailles de police
+        self._update_fonts()
+
+    def _update_fonts(self):
+        """Récupère les polices à la bonne échelle depuis le ResourceManager."""
+        # On demande au manager les fonts calculées par le layout
+        self.font_small = self.res_manager.get_font(self.layout.font_size_small, font_name="Arial")
+        self.font_bold = self.res_manager.get_font(self.layout.font_size_std, bold=True, font_name="Arial")
+        self.font_power = self.res_manager.get_font(self.layout.font_size_title, bold=True, font_name="Arial")
+        self.font_hud = self.res_manager.get_font(self.layout.font_size_title, bold=True, font_name="Arial")
+        self.font_popup = self.res_manager.get_font(self.layout.font_size_huge, bold=True, font_name="Arial")
+
+    def _get_card_image(self, image_path, width, height):
+        """
+        Récupère l'image originale du Manager, la redimensionne et la cache.
+        Retourne None si pas d'image.
+        """
+        if not image_path:
+            return None
+
+        # Clé unique pour le cache local (Chemin + Dimensions)
+        cache_key = (image_path, width, height)
+        
+        # 1. Vérifier le cache local (déjà redimensionné ?)
+        if cache_key in self.scaled_images:
+            return self.scaled_images[cache_key]
+        
+        # 2. Demander l'original au Resource Manager
+        original = self.res_manager.get_image(image_path)
+        
+        if original:
+            try:
+                # 3. Redimensionner et stocker
+                scaled = pygame.transform.smoothscale(original, (width, height))
+                self.scaled_images[cache_key] = scaled
+                return scaled
+            except ValueError:
+                return None
+        
+        return None
 
     def render_all(self, viewing_discard_owner=None, is_paused=False, show_curtain=False):
         """Boucle de rendu principale."""
@@ -93,7 +98,8 @@ class GameRenderer:
         # 2. Zones de jeu (Mains & Boards)
         hide_p2 = True
         hide_p1 = False
-        # Si Debug ou Mode DEV, on montre tout
+        
+        # Visibilité Debug / Dev
         show_all = self.debug or (getattr(self.config, "game_mode", "") == "DEV")
 
         if show_all:
@@ -111,12 +117,11 @@ class GameRenderer:
         self._draw_player_area(self.game.player2, is_top=True, hide_hand=hide_p2, legal_moves=legal_moves)
         self._draw_player_area(self.game.player1, is_top=False, hide_hand=hide_p1, legal_moves=legal_moves)
 
-        # Si une carte est en attente de résolution (Mindbug Decision), on l'affiche en gros
+        # Zoom sur carte en attente (Mindbug Decision)
         if self.game.pending_card and not is_paused:
             self._draw_pending_card_zoom(self.game.pending_card)
 
         # 3. Actions contextuelles (Boutons Mindbug/Passer)
-        # IMPORTANT : On les dessine APRÈS le zoom pour qu'ils soient au-dessus du fond sombre
         if not is_paused:
             self._draw_context_buttons(legal_moves)
 
@@ -128,27 +133,23 @@ class GameRenderer:
         elif is_paused:
             self._draw_popup_pause()
 
-        # Gestion de l'affichage du Zoom Clic Droit (toujours au-dessus de tout)
+        # Zoom Clic Droit (Overlay)
         if self.zoomed_card:
             self._draw_zoomed_view(self.zoomed_card)
             
-        # Dessiner l'indication textuelle
         self._draw_zoom_hint()
 
     def _draw_curtain(self):
         """Affiche l'écran d'attente entre les tours (Mode Hotseat)."""
-        # Fond sombre (Bleu nuit/Gris)
         self.screen.fill((20, 30, 40)) 
         
         player_name = self.game.active_player.name
         color = (255, 215, 0) # Or
         
-        # Texte Principal : "C'EST À JOUEUR X DE JOUER"
         txt = self.font_popup.render(f"C'EST À {player_name} DE JOUER", True, color)
         rect = txt.get_rect(center=(self.layout.screen_w//2, self.layout.screen_h//2 - 20))
         self.screen.blit(txt, rect)
         
-        # Sous-texte : Instruction
         sub = self.font_hud.render("(Cliquez pour révéler votre jeu)", True, (200, 200, 200))
         sub_rect = sub.get_rect(center=(self.layout.screen_w//2, self.layout.screen_h//2 + 30))
         self.screen.blit(sub, sub_rect)
@@ -180,11 +181,10 @@ class GameRenderer:
         self._draw_text(f"Phase : {self.game.phase.name}", self.layout.hud_x, self.layout.hud_phase_y, font=self.font_bold)
         self._draw_text(f"Tour : {self.game.active_player.name}", self.layout.hud_x, self.layout.hud_turn_y, font=self.font_bold, color=(255, 255, 0))
         
-        # Stats (Alignées à gauche)
+        # Stats
         txt_p2 = f"J2 | PV: {p2.hp} | MB: {p2.mindbugs}"
         txt_p1 = f"J1 | PV: {p1.hp} | MB: {p1.mindbugs}"
         
-        # Utilisation de stats_x au lieu de stats_center_x
         surf_p2 = self.font_hud.render(txt_p2, True, (220, 220, 220))
         self.screen.blit(surf_p2, (self.layout.stats_x, self.layout.stats_p2_y))
         
@@ -195,7 +195,7 @@ class GameRenderer:
         if self.game.phase == Phase.RESOLUTION_CHOICE:
              txt = "CLIQUEZ SUR UNE CIBLE VERTE !"
              tsurf = self.font_hud.render(txt, True, (255, 215, 0)) 
-             trect = tsurf.get_rect(center=(self.layout.screen_w//2, self.layout.msg_center_y))   
+             trect = tsurf.get_rect(center=(self.layout.screen_w//2, self.layout.msg_center_y))    
              bg_rect = trect.inflate(20, 10)
              pygame.draw.rect(self.screen, (0,0,0, 150), bg_rect, border_radius=10)
              self.screen.blit(tsurf, trect)
@@ -228,7 +228,6 @@ class GameRenderer:
             pygame.draw.rect(self.screen, COLOR_WHITE, rect, 2, border_radius=8)
             offset += 2
         
-        # Centrage du texte
         txt = self.font_power.render(str(count), True, COLOR_WHITE)
         txt_rect = txt.get_rect(center=(x + self.layout.card_w//2, y + self.layout.card_h//2))
         self.screen.blit(txt, txt_rect)
@@ -246,7 +245,7 @@ class GameRenderer:
             self.screen.blit(cnt_surf, (x+self.layout.card_w-8, y-8))
         else:
             pygame.draw.rect(self.screen, (0,0,0), rect, 2, border_radius=8)
-            txt = self.font_small.render("Defausse", True, (200,200,200)) # Pas d'accent pour éviter bugs font
+            txt = self.font_small.render("Defausse", True, (200,200,200))
             txt_rect = txt.get_rect(center=rect.center)
             self.screen.blit(txt, txt_rect)
         
@@ -255,17 +254,11 @@ class GameRenderer:
     def _draw_card_row(self, cards, y, zone_type, hidden, legal_moves, is_board):
         if not cards: return
         
-        # Calcul du centrage via le layout dynamique
         start_x = self.layout.get_row_start_x(len(cards))
         
-        # --- 1. CONTEXTE (Qui possède cette zone ?) ---
         is_p1_zone = "P1" in zone_type
         row_owner = self.game.player1 if is_p1_zone else self.game.player2
-        
-        # Est-ce le tour de ce joueur ?
         is_active_owner = (row_owner == self.game.active_player)
-        
-        # Est-on en phase de ciblage (où on peut viser l'adversaire) ?
         is_selection_phase = (self.game.phase == Phase.RESOLUTION_CHOICE)
 
         for i, card in enumerate(cards):
@@ -274,41 +267,24 @@ class GameRenderer:
             
             should_highlight = False
             
-            # --- 2. LOGIQUE DE SURBRILLANCE STRICTE ---
-            
-            # CAS A : Phase de Sélection (Ciblage)
-            # On vérifie si l'action spécifique de sélection de cette zone est légale
+            # Logique de surbrillance
             if is_selection_phase:
-                select_key = f"SELECT_{zone_type}" # ex: SELECT_BOARD_P2
+                select_key = f"SELECT_{zone_type}"
                 if (select_key, i) in legal_moves:
                     should_highlight = True
 
-            # CAS B : Phase de Jeu (Action du joueur actif uniquement)
             elif is_active_owner:
-                
-                # B1. Sur le PLATEAU (Board)
                 if is_board:
-                    # Phase de Blocage -> On cherche uniquement "BLOCK"
                     if self.game.phase == Phase.BLOCK_DECISION:
-                        if ("BLOCK", i) in legal_moves: 
-                            should_highlight = True
-                    # Phase Principale -> On cherche uniquement "ATTACK"
+                        if ("BLOCK", i) in legal_moves: should_highlight = True
                     elif self.game.phase in [Phase.P1_MAIN, Phase.P2_MAIN]:
-                        if ("ATTACK", i) in legal_moves: 
-                            should_highlight = True
-                
-                # B2. Dans la MAIN (Hand)
-                else:
-                    # Phase Principale -> On cherche uniquement "PLAY"
-                    # (Impossible de jouer une carte pendant la phase de blocage ou mindbug)
+                        if ("ATTACK", i) in legal_moves: should_highlight = True
+                else: # Hand
                     if self.game.phase in [Phase.P1_MAIN, Phase.P2_MAIN]:
-                        if ("PLAY", i) in legal_moves: 
-                            should_highlight = True
+                        if ("PLAY", i) in legal_moves: should_highlight = True
 
-            # --- 3. DESSIN ---
             self._draw_card(card, x, y, hidden, is_board, should_highlight, display_power)
             
-            # Enregistrement de la zone pour le clic
             rect = pygame.Rect(x, y, self.layout.card_w, self.layout.card_h)
             self.click_zones.append({"type": zone_type, "index": i, "rect": rect})
 
@@ -321,7 +297,9 @@ class GameRenderer:
             pygame.draw.rect(self.screen, COLOR_WHITE, rect, 2, border_radius=8)
             return
 
-        img = self.scaled_images.get(card.image_path)
+        # NOUVEAU : On utilise la méthode helper qui gère cache et resize via res_manager
+        img = self._get_card_image(card.image_path, self.layout.card_w, self.layout.card_h)
+        
         if img:
             self.screen.blit(img, (x, y))
         else:
@@ -344,17 +322,7 @@ class GameRenderer:
         pow_rect = pow_surf.get_rect(center=(cx, cy))
         self.screen.blit(pow_surf, pow_rect)
         
-        # Keywords (pas affiche car la carte a deja l'info)
-        # kw_y = y + self.layout.card_h - 20
-        # for kw in card.keywords:
-        #     kw_surf = self.font_small.render(kw[:8], True, COLOR_WHITE)
-        #     bg_rect = kw_surf.get_rect(center=(x + self.layout.card_w//2, kw_y))
-        #     bg_rect.inflate_ip(8, 4)
-        #     pygame.draw.rect(self.screen, (0,0,0, 180), bg_rect, border_radius=4)
-        #     self.screen.blit(kw_surf, kw_surf.get_rect(center=bg_rect.center))
-        #     kw_y -= 18
-        # ---------------------------------------------------------
-
+        # Border Highlight
         if highlight:
             pygame.draw.rect(self.screen, COLOR_BORDER_LEGAL, rect, 4, border_radius=8)
         elif is_in_play and self.game.pending_attacker == card:
@@ -435,7 +403,6 @@ class GameRenderer:
         is_p1 = (player == self.game.player1)
         select_key = "SELECT_DISCARD_P1" if is_p1 else "SELECT_DISCARD_P2"
         
-        # Affichage simplifié en grille fluide
         x, y = start_x, start_y
         for i, card in enumerate(player.discard):
             is_legal = (select_key, i) in legal_moves
@@ -451,14 +418,11 @@ class GameRenderer:
 
     def _draw_pending_card_zoom(self, card):
         """Dessine la carte en cours de jeu en gros plan au centre."""
-        # 1. Fond sombre semi-transparent
         overlay = pygame.Surface((self.layout.screen_w, self.layout.screen_h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150)) # Noir transparent
+        overlay.fill((0, 0, 0, 150))
         self.screen.blit(overlay, (0, 0))
 
-        # 2. Calculs de taille (Zoom x2 par rapport à la taille normale)
         zoom_factor = 2.0
-        # On s'assure que ça ne dépasse pas la hauteur de l'écran
         max_h = self.layout.screen_h * 0.6
         if self.layout.card_h * zoom_factor > max_h:
             zoom_factor = max_h / self.layout.card_h
@@ -470,36 +434,32 @@ class GameRenderer:
         x = cx - zw // 2
         y = cy - zh // 2
         
-        # 3. Dessin de la carte (Basé sur l'image HD pour la qualité)
+        # NOUVEAU : On utilise l'helper qui interroge res_manager
+        img = self._get_card_image(card.image_path, zw, zh)
+        
         rect = pygame.Rect(x, y, zw, zh)
         
-        # A. Fond / Image
-        if card.image_path in self.original_images:
-            # On redimensionne l'image originale à la volée pour la netteté
-            orig = self.original_images[card.image_path]
-            scaled = pygame.transform.smoothscale(orig, (zw, zh))
-            self.screen.blit(scaled, (x, y))
+        if img:
+            self.screen.blit(img, (x, y))
         else:
-            # Fallback si pas d'image
             pygame.draw.rect(self.screen, COLOR_BG_MENU, rect, border_radius=12)
             name_txt = self.font_bold.render(card.name, True, COLOR_BLACK)
             self.screen.blit(name_txt, name_txt.get_rect(center=rect.center))
 
-        # B. Bordure
         pygame.draw.rect(self.screen, COLOR_WHITE, rect, 4, border_radius=12)
 
-        # C. Puissance (Redimensionnée)
+        # Power
         radius = int(zw * 0.15)
         pcx, pcy = x + int(zw * 0.2), y + int(zh * 0.15)
         pygame.draw.circle(self.screen, COLOR_WHITE, (pcx, pcy), radius)
         pygame.draw.circle(self.screen, COLOR_BLACK, (pcx, pcy), radius, width=3)
         
-        # On utilise une police plus grande pour le zoom
-        font_zoom = pygame.font.SysFont("Arial", int(self.layout.font_size_title * zoom_factor), bold=True)
+        # Font zoomée
+        font_zoom = self.res_manager.get_font(int(self.layout.font_size_title * zoom_factor), bold=True)
         pow_surf = font_zoom.render(str(card.power), True, COLOR_BLACK)
         self.screen.blit(pow_surf, pow_surf.get_rect(center=(pcx, pcy)))
 
-        # D. Mots-clés
+        # Keywords
         kw_y = y + zh - 30
         for kw in card.keywords:
             kw_surf = self.font_bold.render(kw, True, COLOR_WHITE)
@@ -509,41 +469,29 @@ class GameRenderer:
             self.screen.blit(kw_surf, kw_surf.get_rect(center=bg_rect.center))
             kw_y -= 30
             
-        # 4. Titre indicatif au-dessus
         title = self.font_hud.render("CARTE JOUÉE", True, (255, 215, 0))
         self.screen.blit(title, title.get_rect(center=(cx, y - 40)))
 
     def _draw_zoom_hint(self):
-        """Affiche 'Clic Droit : Zoom' en bas à droite."""
         txt = "Clic Droit : Zoom"
-        
-        # On utilise la font 'bold' (gras) pour plus de visibilité
-        # Couleur : Blanc pur ou un jaune léger pour attirer l'oeil
         surf = self.font_bold.render(txt, True, (255, 255, 255)) 
         
-        # Positionnement : En bas à droite de l'écran
-        # On laisse une marge de 10px par rapport au bord droit et 10px par rapport au bas
         margin_right = 20
         margin_bottom = 10
-        
         x = self.layout.screen_w - surf.get_width() - margin_right
         y = self.layout.screen_h - surf.get_height() - margin_bottom
         
-        # Optionnel : Ajouter un petit fond noir semi-transparent derrière pour garantir la lisibilité
         bg_rect = surf.get_rect(topleft=(x, y))
-        bg_rect.inflate_ip(10, 6) # On ajoute un peu d'espace autour
+        bg_rect.inflate_ip(10, 6)
         pygame.draw.rect(self.screen, (0, 0, 0, 150), bg_rect, border_radius=5)
         
         self.screen.blit(surf, (x, y))
 
     def _draw_zoomed_view(self, card):
-        """Affiche une carte en très grand au centre (overlay clic droit)."""
-        # 1. Fond sombre
         overlay = pygame.Surface((self.layout.screen_w, self.layout.screen_h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200)) # Plus sombre que le reste
+        overlay.fill((0, 0, 0, 200))
         self.screen.blit(overlay, (0, 0))
 
-        # 2. Calcul taille (similaire à pending_zoom mais peut-être plus grand)
         zoom_factor = 2.5
         max_h = self.layout.screen_h * 0.8
         if self.layout.card_h * zoom_factor > max_h:
@@ -554,26 +502,23 @@ class GameRenderer:
         cx, cy = self.layout.screen_w // 2, self.layout.screen_h // 2
         rect = pygame.Rect(cx - zw//2, cy - zh//2, zw, zh)
 
-        # 3. Image
-        if card.image_path in self.original_images:
-            orig = self.original_images[card.image_path]
-            scaled = pygame.transform.smoothscale(orig, (zw, zh))
-            self.screen.blit(scaled, rect)
+        # NOUVEAU : Helper avec res_manager
+        img = self._get_card_image(card.image_path, zw, zh)
+        
+        if img:
+            self.screen.blit(img, rect)
         else:
             pygame.draw.rect(self.screen, COLOR_BG_MENU, rect, border_radius=15)
-            # Fallback texte si pas d'image
             t = self.font_popup.render(card.name, True, COLOR_BLACK)
             self.screen.blit(t, t.get_rect(center=rect.center))
 
-        # 4. Bordure et Power
         pygame.draw.rect(self.screen, COLOR_WHITE, rect, 4, border_radius=15)
         
-        # Bulle de puissance
         rad = int(zw * 0.12)
         pcx, pcy = rect.x + int(zw * 0.18), rect.y + int(zh * 0.15)
         pygame.draw.circle(self.screen, COLOR_WHITE, (pcx, pcy), rad)
         pygame.draw.circle(self.screen, COLOR_BLACK, (pcx, pcy), rad, width=3)
         
-        font_z = pygame.font.SysFont("Arial", int(self.layout.font_size_huge * 1.5), bold=True)
+        font_z = self.res_manager.get_font(int(self.layout.font_size_huge * 1.5), bold=True)
         p_surf = font_z.render(str(card.power), True, COLOR_BLACK)
         self.screen.blit(p_surf, p_surf.get_rect(center=(pcx, pcy)))

@@ -2,7 +2,8 @@ import random
 import sys
 import os
 from typing import Optional, List, Tuple
-from .models import Card, Player, CardLoader
+from .models import Card, Player
+from .loaders import CardLoader
 from .rules import Phase, Keyword, CombatUtils
 from .effects import EffectManager
 from constants import PATH_DATA
