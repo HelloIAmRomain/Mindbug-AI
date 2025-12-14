@@ -1,7 +1,7 @@
 import pytest
 import pygame
 import os
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, MagicMock
 from mindbug_gui.renderer import GameRenderer
 from mindbug_engine.models import Card
 from mindbug_engine.rules import Phase
@@ -13,18 +13,28 @@ os.environ["SDL_VIDEODRIVER"] = "dummy"
 def renderer_with_spy(game):
     """
     Crée un renderer dont la méthode _draw_card est espionnée.
+    Intègre les mocks pour Config et ResourceManager.
     """
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
     
-    # Créer un faux Confi
+    # 1. Mock Config
     mock_config = Mock()
-    mock_config.debug_mode = True # ou False selon le besoin
+    mock_config.debug_mode = True 
     mock_config.game_mode = "DEV"
-    # On instancie le renderer
-    renderer = GameRenderer(screen, game, config=mock_config)
     
-    # ON REMPLACE LA MÉTHODE DE DESSIN PAR UN ESPION (MOCK)
+    # 2. Mock ResourceManager (NOUVEAU)
+    mock_res = Mock()
+    # On doit retourner une vraie Font Pygame ou un Mock qui se comporte comme tel
+    # Ici on retourne une font système basique pour éviter le crash
+    mock_res.get_font.return_value = pygame.font.SysFont("Arial", 20)
+    # On retourne une surface vide pour les images
+    mock_res.get_image.return_value = pygame.Surface((10, 10))
+
+    # 3. Instanciation avec les dépendances
+    renderer = GameRenderer(screen, game, config=mock_config, res_manager=mock_res)
+    
+    # 4. Espionnage de _draw_card
     renderer._draw_card = MagicMock()
     
     return renderer
@@ -45,8 +55,9 @@ def test_highlight_my_hand_in_main_phase(game, renderer_with_spy):
     renderer_with_spy._draw_card_row(game.player1.hand, 100, "HAND_P1", False, [("PLAY", 0)], False)
     
     # Vérif : _draw_card a été appelé avec highlight=True
-    args, _ = renderer_with_spy._draw_card.call_args
     # Signature _draw_card : card, x, y, hidden, is_board, highlight, ...
+    # highlight est le 6ème argument (index 5)
+    args, _ = renderer_with_spy._draw_card.call_args
     assert args[5] is True, "La carte en main de P1 devrait être en surbrillance"
 
     # On lance le rendu de la main P2
@@ -58,7 +69,7 @@ def test_highlight_my_hand_in_main_phase(game, renderer_with_spy):
 
 def test_highlight_board_in_attack_phase(game, renderer_with_spy):
     """P1 Attack Phase : Mon board brille, pas ma main."""
-    game.phase = Phase.P1_MAIN # Attention : Engine considère ATTACK comme possible en MAIN
+    game.phase = Phase.P1_MAIN 
     game.active_player_idx = 0
     
     c_hand = Card("h", "Hand", 1)
@@ -66,9 +77,9 @@ def test_highlight_board_in_attack_phase(game, renderer_with_spy):
     game.player1.hand = [c_hand]
     game.player1.board = [c_board]
     
-    legal = [("ATTACK", 0), ("PLAY", 0)] # Imaginons que les deux sont légaux pour l'engine
+    legal = [("ATTACK", 0), ("PLAY", 0)] 
     
-    # 1. Test du Board
+    # Test du Board
     renderer_with_spy._draw_card_row(game.player1.board, 200, "BOARD_P1", False, legal, is_board=True)
     args, _ = renderer_with_spy._draw_card.call_args
     assert args[5] is True, "La créature sur le plateau devrait briller pour attaquer"

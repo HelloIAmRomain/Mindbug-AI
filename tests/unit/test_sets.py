@@ -1,7 +1,7 @@
 import pytest
 import json
 import os
-from mindbug_engine.models import CardLoader
+from mindbug_engine.loaders import CardLoader
 from mindbug_engine.engine import MindbugGame
 from settings import SettingsManager
 import settings as settings_module

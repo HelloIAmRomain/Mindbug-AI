@@ -2,7 +2,8 @@ import pytest
 import json
 import os
 from unittest.mock import patch, mock_open
-from mindbug_engine.models import Card, Player, CardLoader, CardAbility
+from mindbug_engine.models import Card, Player, CardAbility
+from mindbug_engine.loaders import CardLoader
 
 # --- TESTS : CLASSE PLAYER ---
 

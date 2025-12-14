@@ -1,126 +1,25 @@
 import pygame
-import os
-from constants import * # Import colors and paths
-from .components import Button, Toggle, CardThumbnail
-from mindbug_engine.models import CardLoader
-
-class MenuScreen:
-    """Écran principal du jeu : Jouer (Local), Options, Quitter."""
-    
-    def __init__(self, screen, config):
-        self.screen = screen
-        self.config = config
-        self.clock = pygame.time.Clock()
-        
-        # Initialisation unique des polices
-        self.font_title = pygame.font.SysFont("Arial", 80, bold=True)
-        self.font_btn = pygame.font.SysFont("Arial", 40, bold=True)
-        
-        self.buttons = []
-        self._init_layout() # Calcul des positions initiales
-
-    def _init_layout(self):
-        """Recalcule la position des éléments selon la taille actuelle de la fenêtre."""
-        w, h = self.screen.get_size()
-        cx = w // 2
-        cy = h // 2
-        
-        # Dimensions relatives (ex: 25% de la largeur)
-        btn_w = int(w * 0.25) 
-        btn_h = int(h * 0.10) 
-        if btn_h > 80: btn_h = 80 # Max height
-        
-        gap = int(btn_h * 1.2)
-        
-        self.buttons = [
-            # Bouton Jouer Local (Hotseat)
-            Button(
-                (cx - btn_w//2, cy - gap, btn_w, btn_h),
-                "PvP (LOCAL)", self.font_btn, "PLAY_HOTSEAT",
-                color=COLOR_BTN_PLAY
-            ),
-            Button(
-                (cx - btn_w//2, cy, btn_w, btn_h), 
-                "PARAMÈTRES", self.font_btn, "SETTINGS",
-                color=COLOR_BTN_NORMAL
-            ),
-            Button(
-                (cx - btn_w//2, cy + gap, btn_w, btn_h), 
-                "QUITTER", self.font_btn, "QUIT", 
-                color=COLOR_BTN_QUIT
-            )
-        ]
-
-    def run(self):
-        """Boucle d'affichage du Menu."""
-        running = True
-        while running:
-            # 1. Gestion des Événements
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return "QUIT"
-                
-                # --- GESTION DU REDIMENSIONNEMENT ---
-                elif event.type == pygame.VIDEORESIZE:
-                    # On applique la nouvelle taille
-                    self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
-                    # On recalcule les positions des boutons
-                    self._init_layout() 
-                
-                # Raccourci Clavier
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    return "QUIT"
-                
-                # Clics Boutons
-                for btn in self.buttons:
-                    if btn.is_clicked(event):
-                        # GESTION DES MODES DE JEU
-                        if btn.action_id == "PLAY_HOTSEAT":
-                            self.config.game_mode = "HOTSEAT"
-                            return "PLAY" # Le main.py lancera le jeu
-                        
-                        return btn.action_id
-
-            # 2. Dessin
-            self.screen.fill(COLOR_BG_MENU)
-            
-            w, h = self.screen.get_size()
-            
-            # Titre (Centré haut, relatif)
-            title = self.font_title.render("MINDBUG AI", True, COLOR_BLACK)
-            title_rect = title.get_rect(center=(w // 2, h * 0.15))
-            self.screen.blit(title, title_rect)
-            
-            # Boutons
-            for btn in self.buttons:
-                btn.draw(self.screen)
-            
-            pygame.display.flip()
-            self.clock.tick(FPS_CAP)
-            
-        return "QUIT"
-
+from constants import *
+from mindbug_gui.components import Button, Toggle, CardThumbnail
+from mindbug_engine.loaders import CardLoader
 
 class SettingsScreen:
     """Écran de configuration, gestion des Sets et sélection de deck."""
     
-    def __init__(self, screen, config):
+    def __init__(self, screen, config, res_manager):
         self.screen = screen
         self.config = config
+        self.res_manager = res_manager
         self.clock = pygame.time.Clock()
         
-        self.font = pygame.font.SysFont("Arial", 20)
-        self.font_title = pygame.font.SysFont("Arial", 40, bold=True)
-        self.font_popup = pygame.font.SysFont("Arial", 30, bold=True)
+        self.font = self.res_manager.get_font(20)
+        self.font_title = self.res_manager.get_font(40, bold=True)
+        self.font_popup = self.res_manager.get_font(30, bold=True)
         
         self.is_confirming = False
         
-        # Chargement des données
+        # Données
         self.all_cards = CardLoader.load_deck(PATH_DATA)
-        self.img_cache = self._load_images()
-        
-        # --- AUTO-DÉCOUVERTE DES SETS ---
-        # On scanne les cartes chargées pour trouver tous les sets uniques
         self.available_sets = sorted(list(set(c.set for c in self.all_cards)))
         
         # UI Elements
@@ -133,77 +32,49 @@ class SettingsScreen:
         
         self._init_layout()
 
-    def _load_images(self):
-        cache = {}
-        if os.path.exists(PATH_ASSETS):
-            for card in self.all_cards:
-                if not card.image_path: 
-                    cache[card.image_path] = None
-                    continue
-                path = os.path.join(PATH_ASSETS, card.image_path)
-                if os.path.exists(path):
-                    try:
-                        img = pygame.image.load(path).convert_alpha()
-                        cache[card.image_path] = img
-                    except: cache[card.image_path] = None
-                else: cache[card.image_path] = None
-        return cache
-
     def _init_layout(self):
-        """Recalcule tout l'affichage (Options, Sets, Grille)."""
         w, h = self.screen.get_size()
         cx, cy = w // 2, h // 2
         
-        # --- A. OPTIONS GÉNÉRALES (Gauche) ---
+        # --- OPTIONS ---
         opt_y = int(h * 0.12)
         col1_x = int(w * 0.15)
         
-        # On recrée les toggles d'options seulement s'ils n'existent pas
-        # (pour garder l'état en cas de resize, bien que init_layout reset tout ici)
         self.toggles_options = [
             Toggle(col1_x, opt_y, "Mode Debug (Voir mains)", self.font, initial_value=self.config.debug_mode),
             Toggle(col1_x, opt_y + 40, "Effets Sonores", self.font, initial_value=self.config.enable_sound),
             Toggle(col1_x, opt_y + 80, "Animations", self.font, initial_value=self.config.enable_effects),
         ]
         
-        # --- B. SÉLECTION DES SETS (Droite) ---
-        # Positionnement à droite des options
+        # --- SETS ---
         col_set_x = int(w * 0.55) 
         set_y = opt_y
         
-        # Si on a déjà créé les toggles de sets (ex: update dynamique), on garde leurs valeurs
-        # Sinon, on prend la config
         existing_states = {t.set_id: t.value for t in self.toggles_sets} if self.toggles_sets else {}
         
         self.toggles_sets = []
         for set_name in self.available_sets:
-            # État initial : soit l'état actuel de l'UI, soit la config sauvegardée
             if set_name in existing_states:
                 is_active = existing_states[set_name]
             else:
                 is_active = set_name in self.config.active_sets
 
-            # Nom plus joli pour l'affichage (enlève les _ et met des majuscules)
             display_name = set_name.replace("_", " ").title()
             label = f"Set : {display_name}"
             
             tog = Toggle(col_set_x, set_y, label, self.font, initial_value=is_active)
-            tog.set_id = set_name # On stocke l'ID brute pour la logique
+            tog.set_id = set_name
             
             self.toggles_sets.append(tog)
             set_y += 40
             
-        # --- C. FILTRAGE ET DECK BUILDER (Bas) ---
+        # --- GRILLE ---
         start_x = int(w * 0.05)
         start_y = int(h * 0.35)
         
-        # Calcul quels sets sont visuellement actifs
         active_visual_sets = [t.set_id for t in self.toggles_sets if t.value]
-        
-        # Filtre des cartes à afficher
         cards_to_show = [c for c in self.all_cards if c.set in active_visual_sets]
 
-        # Calcul taille grille
         cards_per_row = 12
         total_gap = (cards_per_row + 1) * 10
         avail_w = w - (start_x * 2)
@@ -228,8 +99,11 @@ class SettingsScreen:
             if self.config.active_card_ids: 
                 is_sel = card.id in self.config.active_card_ids
             
+            img = self.res_manager.get_image(card.image_path)
+            fake_cache = {card.image_path: img}
+            
             self.thumbnails.append(CardThumbnail(
-                card, x, y, thumb_w, thumb_h, self.img_cache, is_sel
+                card, x, y, thumb_w, thumb_h, fake_cache, is_sel
             ))
 
         # --- BOUTONS ---
@@ -256,19 +130,15 @@ class SettingsScreen:
                     self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
                     self._init_layout()
                 
-                # --- LOGIQUE UPDATE DYNAMIQUE ---
-                # Si on change un Set, on doit rafraîchir la grille
                 sets_changed = False
                 for t_set in self.toggles_sets:
                     if t_set.handle_event(event):
                         sets_changed = True
                 
                 if sets_changed:
-                    # On recalcule l'affichage (filtrage des cartes) sans perdre les états
                     self._init_layout()
                     continue 
 
-                # --- POPUP ---
                 if self.is_confirming:
                     if self.btn_yes.is_clicked(event):
                         self.save_config()
@@ -279,13 +149,11 @@ class SettingsScreen:
                          self.is_confirming = False
                     continue 
 
-                # --- INPUTS NORMAUX ---
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self.is_confirming = True 
                     continue
                 
                 for tog in self.toggles_options: tog.handle_event(event)
-                
                 for thumb in self.thumbnails: thumb.handle_event(event)
                 
                 if self.btn_back.is_clicked(event):
@@ -295,7 +163,6 @@ class SettingsScreen:
             self.screen.fill(COLOR_BG_MENU)
             w, h = self.screen.get_size()
             
-            # Titres
             t_opt = self.font_title.render("Options & Extensions", True, COLOR_BLACK)
             self.screen.blit(t_opt, (w * 0.05, h * 0.05))
             
@@ -344,49 +211,27 @@ class SettingsScreen:
         self.btn_no.draw(self.screen)
 
     def save_config(self):
-        # 1. Sauvegarde des Options Générales
         self.config.debug_mode = self.toggles_options[0].value
         self.config.enable_sound = self.toggles_options[1].value
         self.config.enable_effects = self.toggles_options[2].value
         
-        # 2. Sauvegarde des Sets Actifs
         new_active_sets = [t.set_id for t in self.toggles_sets if t.value]
-        # Si tout est désactivé, on force au moins le set par défaut pour éviter un jeu vide
         if not new_active_sets:
-            # On essaye de trouver "FIRST_CONTACT", sinon le premier dispo
             if "FIRST_CONTACT" in self.available_sets:
                 new_active_sets = ["FIRST_CONTACT"]
             elif self.available_sets:
                 new_active_sets = [self.available_sets[0]]
-                
         self.config.active_sets = new_active_sets
 
-        # 3. Sauvegarde des Cartes Sélectionnées (IDs)
-        # Attention : On ne sauvegarde que les cartes visibles ET sélectionnées
-        # Ou alors, on doit fusionner avec les cartes sélectionnées des sets non visibles ?
-        # Pour faire simple et robuste : On reconstruit la liste complète
-        
-        # On récupère les IDs visibles sélectionnés
         visible_selected = {t.card.id for t in self.thumbnails if t.is_selected}
-        
-        # On garde aussi les IDs qui étaient déjà sélectionnés MAIS qui ne sont pas visibles actuellement
-        # (car appartenant à un set décoché). Cela évite de perdre sa config deck quand on décoche un set.
         previous_selected = set(self.config.active_card_ids) if self.config.active_card_ids else set()
-        
-        # IDs visibles actuellement (même non sélectionnés)
         visible_ids = {t.card.id for t in self.thumbnails}
-        
-        # IDs cachés qui étaient sélectionnés = Previous - Visible
         hidden_selected = previous_selected - visible_ids
-        
-        # Nouvelle liste = Visible Selection + Hidden Selection
         final_ids = list(visible_selected.union(hidden_selected))
         
-        # Si la liste couvre tout, on vide pour optimiser (signifie "tout le deck")
         if len(final_ids) == len(self.all_cards) or len(final_ids) == 0:
             self.config.active_card_ids = []
         else:
             self.config.active_card_ids = final_ids
 
-        # 4. Écriture Disque (Settings.json)
         self.config.save_settings()

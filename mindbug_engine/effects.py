@@ -94,7 +94,8 @@ class EffectManager:
     def _handle_destroy_all(self, game, card, owner, opp):
         targets = self._get_valid_targets(opp.board, card.ability.condition, card.ability.condition_value)
         for target in list(targets):
-            game._destroy_card(target, opp)
+            # CORRECTION ICI : Appel via combat_manager
+            game.combat_manager.destroy_card(target, opp)
 
     def _handle_sacrifice(self, game, card, owner, opp):
         if not opp.board: return
@@ -102,7 +103,8 @@ class EffectManager:
         for _ in range(card.ability.value):
             if opp.board:
                 target = random.choice(opp.board)
-                game._destroy_card(target, opp)
+                # CORRECTION ICI : Appel via combat_manager
+                game.combat_manager.destroy_card(target, opp)
 
     def _handle_steal_hand(self, game, card, owner, opp):
         if not opp.hand: return
