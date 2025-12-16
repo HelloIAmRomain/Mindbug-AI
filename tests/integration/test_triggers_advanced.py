@@ -75,14 +75,13 @@ def test_selection_handover_on_death(game):
     assert harpie in p1.discard
     assert game.phase == Phase.RESOLUTION_CHOICE
     
-    # LE TEST CRITIQUE : C'est bien à P1 de choisir, pas à P2 !
     assert game.active_player == p1
     assert game.selection_context["initiator"] == p1
     
     # 4. P1 choisit la cible
     # Target est restée sur le board, c'est la seule carte restante de P2 (index 0)
     # (Killer est morte aussi à cause du combat, mais Target survit)
-    # ATTENTION: Si Killer meurt aussi, Target est index 0.
+    # Si Killer meurt aussi, Target est index 0.
     game.step("SELECT_BOARD_P2", 0)
     
     # Vérif finale
