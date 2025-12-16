@@ -15,3 +15,10 @@ htmlcov/
 # IDE
 .vscode/
 .idea/
+
+# Debug
+game_debug.log
+
+# Local conf
+settings.json
+
