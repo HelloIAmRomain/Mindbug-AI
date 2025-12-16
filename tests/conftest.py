@@ -12,7 +12,7 @@ from mindbug_engine.models import Card, CardAbility, Player
 def game():
     """Crée une instance de jeu vierge pour chaque test."""
     # On passe une liste vide pour éviter de charger le vrai JSON et avoir un deck vide/contrôlé
-    g = MindbugGame(active_card_ids=["dummy"]) 
+    g = MindbugGame(active_card_ids=["dummy"], verbose=False) 
     # On vide les mains/decks pour les tests manuels
     g.player1.hand = []
     g.player1.board = []
@@ -33,7 +33,7 @@ def player2(game):
 @pytest.fixture
 def create_card():
     """Factory pour créer des cartes rapidement dans les tests."""
-    def _builder(name="TestCard", power=1, keywords=None, ability_code=None, ability_val=0, ability_target="NONE"):
+    def _builder(name="TestCard", power=1, keywords=None, ability_code=None, ability_val=0, ability_target="NONE", set_id="FIRST_CONTACT"):
         ability = None
         if ability_code:
             ability = CardAbility(code=ability_code, value=ability_val, target=ability_target)
@@ -43,6 +43,7 @@ def create_card():
             name=name, 
             power=power, 
             keywords=keywords if keywords else [], 
-            ability=ability
+            ability=ability,
+            set_id=set_id
         )
     return _builder

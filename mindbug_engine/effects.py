@@ -49,11 +49,11 @@ class EffectManager:
         handler = self._handlers.get(code)
 
         if handler:
-            print(f"✨ EFFET : {code} (Val:{card.ability.value}) pour {card.name}")
+            game.log(f"✨ EFFET : {code} (Val:{card.ability.value}) pour {card.name}")
             # On passe le contexte complet au handler
             handler(game, card, owner, opponent)
         else:
-            print(f"⚠️ AVERTISSEMENT : Effet non implémenté ou code inconnu '{code}'")
+            game.log(f"⚠️ AVERTISSEMENT : Effet non implémenté ou code inconnu '{code}'")
 
     # ==========================================
     #  HANDLERS (Logique Spécifique)

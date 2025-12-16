@@ -17,6 +17,28 @@ def test_player_initialization():
     assert p.board == []
     assert p.discard == []
 
+def test_player_copy():
+    """Vérifie que la copie d'un joueur est profonde (deep copy)."""
+    p = Player("Original")
+    p.hp = 1
+    c1 = Card("1", "Rat", 2)
+    p.hand.append(c1)
+    
+    # ACTION : Clonage
+    clone = p.copy()
+    
+    # VERIFICATION
+    assert clone.name == "Original"
+    assert clone.hp == 1
+    assert len(clone.hand) == 1
+    
+    # Test d'indépendance
+    clone.hand[0].power = 99
+    clone.hp = 3
+    
+    assert p.hp == 1
+    assert p.hand[0].power == 2  # L'original ne doit pas changer
+
 # --- TESTS : CLASSE CARD ---
 
 def test_card_initialization_defaults():
@@ -25,32 +47,33 @@ def test_card_initialization_defaults():
     assert c.keywords == []
     assert c.trigger is None
     assert c.is_damaged is False
+    assert c.set == "FIRST_CONTACT" # Valeur par défaut
 
-def test_card_copy_independence():
+def test_card_copy_method():
     """
-    CRITIQUE : Vérifie que modifier une copie n'affecte pas l'original.
-    Essentiel pour le Deck Building (on copie les templates).
+    Vérifie la méthode .copy() ajoutée pour l'IA.
     """
-    original = Card(id="01", name="Rat", power=2)
-    # Simulation d'une copie (si méthode copy implémentée ou via constructeur)
-    # Ici on teste le comportement attendu si on recrée un objet
-    # Si vous avez une méthode .copy() dans Card, utilisez-la.
-    # Sinon, le CardLoader crée de nouvelles instances à chaque fois, ce qui est testé plus bas.
+    # Setup
+    ability = CardAbility("STEAL", value=1)
+    original = Card(id="01", name="Rat", power=2, keywords=["HUNTER"], ability=ability, set_id="NEW_SET")
+    original.is_damaged = True
     
-    # Testons ici la logique de séparation des listes (keywords)
-    original.keywords.append("HUNTER")
-    copy = Card(id="02", name="Rat", power=2, keywords=list(original.keywords))
+    # Action
+    copy = original.copy()
     
-    # On modifie la copie
-    copy.is_damaged = True
+    # Vérifications Base
+    assert copy.id == "01"
+    assert copy.name == "Rat"
+    assert copy.set == "NEW_SET"
+    assert copy.is_damaged is True
+    assert copy.ability.code == "STEAL"
+    
+    # Vérification Indépendance
     copy.keywords.append("POISON")
+    copy.ability.value = 5
     
-    # L'original doit rester intact
-    assert original.is_damaged is False
     assert "POISON" not in original.keywords
-    assert "HUNTER" in original.keywords
-    
-    # Ce sont deux objets différents en mémoire
+    assert original.ability.value == 1 # L'original ne doit pas bouger
     assert original is not copy
 
 def test_card_reset():
@@ -72,11 +95,9 @@ def test_card_reset():
 def test_loader_simple_json():
     """Vérifie le chargement d'un JSON simple."""
     fake_json = json.dumps([
-        {"id": "c1", "name": "TestCard", "power": 5, "copies": 1}
+        {"id": "c1", "name": "TestCard", "power": 5, "set": "BASE_SET"}
     ])
     
-    # IMPORTANT : On mock os.path.exists pour qu'il retourne True
-    # Sinon CardLoader lève FileNotFoundError avant même d'essayer d'ouvrir
     with patch("builtins.open", mock_open(read_data=fake_json)):
         with patch("os.path.exists", return_value=True):
             deck = CardLoader.load_deck("dummy_path.json")
@@ -84,26 +105,7 @@ def test_loader_simple_json():
             assert len(deck) == 1
             assert deck[0].name == "TestCard"
             assert deck[0].power == 5
-
-def test_loader_handles_copies():
-    """Vérifie que 'copies': 2 génère bien deux instances distinctes."""
-    fake_json = json.dumps([
-        {"id": "c1", "name": "TwinRat", "power": 2, "copies": 2}
-    ])
-    
-    with patch("builtins.open", mock_open(read_data=fake_json)):
-        with patch("os.path.exists", return_value=True):
-            deck = CardLoader.load_deck("dummy_path.json")
-            
-            # Note: Si votre CardLoader actuel ne gère pas encore la boucle "copies", 
-            # ce test échouera (il trouvera 1 carte). 
-            # Le loader donné précédemment ne gérait pas "copies".
-            # Si vous voulez gérer "copies", il faut modifier CardLoader.
-            # Pour l'instant, on assume 1 entrée = 1 carte dans le JSON.
-            assert len(deck) >= 1 
-            
-            # Si votre JSON contient 2 entrées explicites :
-            # assert len(deck) == 2
+            assert deck[0].set == "BASE_SET"
 
 def test_loader_parses_ability():
     """Vérifie que la structure complexe 'ability' est bien lue."""

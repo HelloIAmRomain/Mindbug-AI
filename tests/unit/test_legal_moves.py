@@ -79,3 +79,32 @@ def test_legal_moves_hunter_force_block(game):
     # Ce n'est pas un test direct de get_legal_moves mais du flux qui mène à des moves de sélection
     # Déjà couvert par les tests d'intégration, mais pour être sûr :
     pass
+
+
+def test_legal_moves_frenzy_constraint(game):
+    """
+    CRITIQUE : Si une créature est en mode Fureur (Frenzy),
+    le joueur NE PEUT PAS jouer de carte ni attaquer avec une autre.
+    """
+    p1 = game.player1
+    frenzy_creature = Card("f", "Frenzy", 6)
+    other_creature = Card("o", "Other", 4)
+
+    p1.board = [frenzy_creature, other_creature]
+    p1.hand = [Card("h", "Hand", 1)]
+
+    # Activation du mode Fureur
+    game.phase = Phase.P1_MAIN
+    game.active_player_idx = 0
+    game.frenzy_candidate = frenzy_creature
+
+    moves = game.get_legal_moves()
+
+    # Vérifications
+    assert len(moves) == 1
+    assert moves[0] == ("ATTACK", 0)  # Index 0 = frenzy_creature
+
+    # S'assurer qu'on ne peut PAS jouer de carte
+    assert ("PLAY", 0) not in moves
+    # S'assurer qu'on ne peut PAS attaquer avec l'autre
+    assert ("ATTACK", 1) not in moves

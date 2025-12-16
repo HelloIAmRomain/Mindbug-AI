@@ -6,7 +6,7 @@ def run_ai_test():
     print("--- Démarrage du Test IA ---")
     
     # 1. Création d'une partie
-    game = MindbugGame()
+    game = MindbugGame(verbose=False)
     
     # 2. Setup d'une situation critique pour aider l'IA
     # L'adversaire (P2) a une carte très forte (10)

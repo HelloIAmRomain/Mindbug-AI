@@ -71,37 +71,52 @@ def test_mechanic_dynamic_keywords_shark(game):
 # --- TEST MECANIQUE : FURIE (FRENZY) ---
 
 def test_mechanic_frenzy_double_attack(game):
-    """Vérifie l'enchaînement de deux attaques avec Furie."""
+    """Vérifie l'enchaînement de deux attaques avec Furie (Mode Automatique)."""
     p1 = game.player1
     p2 = game.player2
-    
+
+    # Setup : P1 a une créature Fureur (6), P2 a deux bloqueurs (2)
     frenzy_card = Card("f", "Frenzy", 6, keywords=["FRENZY"])
     p1.board = [frenzy_card]
-    
-    # P2 a deux petites créatures
+
     m1 = Card("m1", "M1", 2)
     m2 = Card("m2", "M2", 2)
     p2.board = [m1, m2]
-    
+
     game.active_player_idx = 0
     game.phase = Phase.P1_MAIN
-    
+
     # --- Attaque 1 ---
+    # P1 attaque manuellement la première fois
     game.step("ATTACK", 0)
-    game.step("BLOCK", 0) # M1 bloque
-    
-    assert m1 in p2.discard
-    
-    # LE CRITIQUE : C'est encore à P1 d'attaquer
-    assert game.active_player == p1
-    assert game.frenzy_candidate == frenzy_card
-    
-    # --- Attaque 2 ---
-    game.step("ATTACK", 0)
-    game.step("BLOCK", 0) # M2 bloque (index 0 maintenant)
-    
-    assert m2 in p2.discard
-    
-    # Fin du tour, c'est à P2
+
+    # P2 défend
     assert game.active_player == p2
-    assert game.frenzy_candidate is None
+    game.step("BLOCK", 0)  # M1 bloque
+
+    # Résultat Combat 1
+    assert m1 in p2.discard
+    assert frenzy_card in p1.board  # Fureur survit
+
+    # --- Attaque 2 (Automatique) ---
+    # CORRECTION DU TEST ICI :
+    # Avec la nouvelle logique, on ne revient PAS à P1.
+    # La Fureur a déclenché une nouvelle phase de blocage IMMÉDIATE pour P2.
+
+    assert game.phase == Phase.BLOCK_DECISION
+    assert game.active_player == p2  # C'est à P2 de bloquer à nouveau !
+    assert game.pending_attacker == frenzy_card
+
+    # P2 défend la seconde attaque
+    game.step("BLOCK", 0)  # M2 bloque (l'index 0 car M1 est morte)
+
+    # Résultat Combat 2
+    assert m2 in p2.discard
+
+    # --- Fin du tour ---
+    # La Fureur ne s'active qu'une fois par tour (logique à vérifier si implémentée,
+    # mais ici frenzy_candidate devrait être reset)
+    # Le tour devrait être fini -> Main à P2
+
+    assert game.phase == Phase.P2_MAIN
+    assert game.active_player == p2

@@ -59,10 +59,16 @@ class MCTS:
             # 1. SELECTION
             # On descend dans l'arbre jusqu'à trouver une feuille ou un nœud non étendu
             while node.is_fully_expanded() and not node.is_terminal_node():
+                # --- CORRECTION DE SÉCURITÉ ICI ---
+                if not node.children:
+                    # Impasse : Pas de winner, mais pas d'enfants (aucun coup possible)
+                    break 
+                # ----------------------------------
                 node = node.best_child(self.exploration_weight)
 
+            # ... (Le reste de la méthode reste identique : EXPANSION, SIMULATION, BACKPROP) ...
+            
             # 2. EXPANSION
-            # Si le nœud n'est pas terminal et a des coups non testés, on en crée un
             if not node.is_terminal_node() and not node.is_fully_expanded():
                 move = node.untried_moves.pop()
                 new_state = self._apply_move_on_clone(node.game_state, move)
@@ -70,25 +76,17 @@ class MCTS:
                 node.children.append(child_node)
                 node = child_node
 
-            # 3. SIMULATION (Rollout)
-            # On joue au hasard jusqu'à la fin de la partie
+            # 3. SIMULATION
             simulation_state = node.game_state.clone()
             self._rollout(simulation_state)
 
             # 4. BACKPROPAGATION
-            # On remonte le résultat (1 si victoire IA, 0 sinon)
-            # Attention : root_game.active_player est celui qui demande le coup (l'IA)
-            # On doit vérifier si ce joueur a gagné dans la simulation.
-            
-            # Qui est l'IA qui réfléchit ?
             ai_player_idx = root_game.active_player_idx 
-            
             winner_idx = -1
             if simulation_state.winner:
                 if simulation_state.winner.name == "P1": winner_idx = 0
                 elif simulation_state.winner.name == "P2": winner_idx = 1
             
-            # Score : 1.0 si l'IA gagne, 0.0 sinon
             score = 1.0 if winner_idx == ai_player_idx else 0.0
             
             while node is not None:
@@ -96,9 +94,13 @@ class MCTS:
                 node.wins += score
                 node = node.parent
 
-        # Fin du temps imparti, on retourne le coup le plus visité (le plus robuste)
+        # Fin du temps imparti
         if not root_node.children:
-            return None # Aucun coup possible ou temps trop court
+            # Si l'IA n'a trouvé AUCUN coup valide (ex: début de partie buggé ou impasse totale)
+            print("⚠️ IA MCTS : Aucun coup trouvé (Children vide).")
+            # Fallback : on retourne un PASS ou None
+            possible = root_game.get_legal_moves()
+            return random.choice(possible) if possible else None
             
         best_child = max(root_node.children, key=lambda c: c.visits)
         return best_child.move

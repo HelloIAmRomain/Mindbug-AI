@@ -6,7 +6,7 @@ from mindbug_gui.window import MindbugGUI
 from mindbug_engine.rules import Phase
 from contextlib import contextmanager
 
-# Configuration "Headless"
+# Configuration "Headless" pour ne pas ouvrir de vraie fenêtre pendant les tests
 os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 @pytest.fixture
@@ -32,13 +32,16 @@ def gui(game):
         # On instancie la GUI
         app = MindbugGUI(mock_config, screen=screen)
         
-    # On remplace le moteur interne par notre fixture 'game'
-    app.game = game
+        # --- CORRECTION CRITIQUE ---
+        # On utilise set_game() au lieu de app.game = game.
+        # Cela permet d'initialiser correctement app.renderer
+        app.set_game(game)
+        # ---------------------------
     
     # On espionne la méthode step
     app.game.step = MagicMock()
     
-    # On vide les zones de clic par défaut
+    # Maintenant app.renderer existe, on peut vider les zones
     app.renderer.click_zones = []
     
     return app

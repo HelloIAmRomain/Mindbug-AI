@@ -1,0 +1,211 @@
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : PLAY (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 plays Lanceur d'escargots. Mindbug check...
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande PLAY exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.MINDBUG_DECISION, Active=P2
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : PLAY (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 plays Pachypoulpe. Mindbug check...
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande PLAY exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.MINDBUG_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : PASS (idx=-1) | Phase: Phase.MINDBUG_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > P2 declines Mindbug.
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - INFO - [GAME] --- Turn end. Turn of P2 ---
+14:04:15 - DEBUG - ✔ Commande PASS exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P2_MAIN, Active=P2
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : PLAY (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 plays Oursins hurleurs. Mindbug check...
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande PLAY exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.MINDBUG_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : MINDBUG (idx=-1) | Phase: Phase.MINDBUG_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > MINDBUG ! P2 steals Oursins hurleurs !
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - INFO - [GAME] > Turn returns to P1 (Replays turn).
+14:04:15 - DEBUG - ✔ Commande MINDBUG exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P1_MAIN, Active=P1
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : ATTACK (idx=0) | Phase: Phase.P2_MAIN | Active: P2
+14:04:15 - INFO - [GAME] > P2 attacks with K !
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - DEBUG - ✔ Commande ATTACK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.BLOCK_DECISION, Active=P1
+14:04:15 - DEBUG - ▶ STEP REÇU : NO_BLOCK (idx=-1) | Phase: Phase.BLOCK_DECISION | Active: P1
+14:04:15 - INFO - [GAME] > P1 decides not to block.
+14:04:15 - INFO - [GAME] > No block ! P1 loses 1 HP.
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - INFO - [GAME] --- Turn end. Turn of P1 ---
+14:04:15 - DEBUG - ✔ Commande NO_BLOCK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P1_MAIN, Active=P1
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : ATTACK (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 attacks with Att !
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande ATTACK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.BLOCK_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : BLOCK (idx=0) | Phase: Phase.BLOCK_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > P2 blocks with Shield.
+14:04:15 - INFO - [GAME] > Combat : Att (5) vs Shield (3)
+14:04:15 - INFO - [GAME] > Shield uses TOUGH shield ! It survives but is damaged.
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - INFO - [GAME] --- Turn end. Turn of P2 ---
+14:04:15 - DEBUG - ✔ Commande BLOCK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P2_MAIN, Active=P2
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : ATTACK (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 attacks with Frenzy !
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande ATTACK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.BLOCK_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : BLOCK (idx=0) | Phase: Phase.BLOCK_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > P2 blocks with M1.
+14:04:15 - INFO - [GAME] > Combat : Frenzy (6) vs M1 (2)
+14:04:15 - INFO - [GAME] > M1 is destroyed.
+14:04:15 - INFO - [GAME] > 🔥 FRENZY ACTIVATED ! Frenzy attacks again automatically !
+14:04:15 - DEBUG - ✔ Commande BLOCK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.BLOCK_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : BLOCK (idx=0) | Phase: Phase.BLOCK_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > P2 blocks with M2.
+14:04:15 - INFO - [GAME] > Combat : Frenzy (6) vs M2 (2)
+14:04:15 - INFO - [GAME] > M2 is destroyed.
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - INFO - [GAME] --- Turn end. Turn of P2 ---
+14:04:15 - DEBUG - ✔ Commande BLOCK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P2_MAIN, Active=P2
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : PLAY (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 plays Doc. Mindbug check...
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande PLAY exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.MINDBUG_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : PASS (idx=-1) | Phase: Phase.MINDBUG_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > P2 declines Mindbug.
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - INFO - [GAME] ✨ EFFET : HEAL (Val:3) pour Doc
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - INFO - [GAME] --- Turn end. Turn of P2 ---
+14:04:15 - DEBUG - ✔ Commande PASS exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P2_MAIN, Active=P2
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : PLAY (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 plays Doc. Mindbug check...
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande PLAY exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.MINDBUG_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : MINDBUG (idx=-1) | Phase: Phase.MINDBUG_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > MINDBUG ! P2 steals Doc !
+14:04:15 - INFO - [GAME] ✨ EFFET : HEAL (Val:3) pour Doc
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - INFO - [GAME] > Turn returns to P1 (Replays turn).
+14:04:15 - DEBUG - ✔ Commande MINDBUG exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P1_MAIN, Active=P1
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : ATTACK (idx=0) | Phase: Phase.P2_MAIN | Active: P2
+14:04:15 - INFO - [GAME] > P2 attacks with Killer !
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - DEBUG - ✔ Commande ATTACK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.BLOCK_DECISION, Active=P1
+14:04:15 - DEBUG - ▶ STEP REÇU : BLOCK (idx=0) | Phase: Phase.BLOCK_DECISION | Active: P1
+14:04:15 - INFO - [GAME] > P1 blocks with Bomb.
+14:04:15 - INFO - [GAME] > Combat : Killer (10) vs Bomb (1)
+14:04:15 - INFO - [GAME] > Bomb is destroyed.
+14:04:15 - INFO - [GAME] ✨ EFFET : DESTROY_CREATURE (Val:1) pour Bomb
+14:04:15 - INFO - [GAME] ⌛ WAITING : P1 must choose a target for DESTROY_CREATURE.
+14:04:15 - INFO - [GAME]    -> Combat interrupted (Selection required).
+14:04:15 - DEBUG - ✔ Commande BLOCK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.RESOLUTION_CHOICE, Active=P1
+14:04:15 - DEBUG - ▶ STEP REÇU : SELECT_BOARD_P2 (idx=1) | Phase: Phase.RESOLUTION_CHOICE | Active: P1
+14:04:15 - INFO - [GAME] > Target chosen : Victim
+14:04:15 - INFO - [GAME] > Victim is destroyed.
+14:04:15 - INFO - [GAME]    -> Selection end.
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - INFO - [GAME] --- Turn end. Turn of P2 ---
+14:04:15 - DEBUG - ✔ Commande SELECT_BOARD_P2 exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P2_MAIN, Active=P2
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : PLAY (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 plays Draco. Mindbug check...
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande PLAY exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.MINDBUG_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : PASS (idx=-1) | Phase: Phase.MINDBUG_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > P2 declines Mindbug.
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - INFO - [GAME] ✨ EFFET : PLAY_FROM_MY_DISCARD (Val:1) pour Draco
+14:04:15 - INFO - [GAME] ⌛ WAITING : P1 must choose a target for PLAY_FROM_MY_DISCARD.
+14:04:15 - INFO - [GAME]    -> Turn end suspended pending selection...
+14:04:15 - DEBUG - ✔ Commande PASS exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.RESOLUTION_CHOICE, Active=P1
+14:04:15 - DEBUG - ▶ STEP REÇU : SELECT_DISCARD_P1 (idx=0) | Phase: Phase.RESOLUTION_CHOICE | Active: P1
+14:04:15 - INFO - [GAME] > Target chosen : Dead
+14:04:15 - INFO - [GAME]    -> Selection end.
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - INFO - [GAME] --- Turn end. Turn of P2 ---
+14:04:15 - DEBUG - ✔ Commande SELECT_DISCARD_P1 exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P2_MAIN, Active=P2
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : ATTACK (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 attacks with Mosquito !
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande ATTACK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.BLOCK_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : NO_BLOCK (idx=-1) | Phase: Phase.BLOCK_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > P2 decides not to block.
+14:04:15 - INFO - [GAME] ✨ EFFET : SET_OPPONENT_HP_TO_ONE (Val:1) pour Mosquito
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - INFO - [GAME] --- Turn end. Turn of P2 ---
+14:04:15 - DEBUG - ✔ Commande NO_BLOCK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P2_MAIN, Active=P2
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - ▶ STEP REÇU : ATTACK (idx=0) | Phase: Phase.P1_MAIN | Active: P1
+14:04:15 - INFO - [GAME] > P1 attacks with Harpie !
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - DEBUG - ✔ Commande ATTACK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.BLOCK_DECISION, Active=P2
+14:04:15 - DEBUG - ▶ STEP REÇU : BLOCK (idx=0) | Phase: Phase.BLOCK_DECISION | Active: P2
+14:04:15 - INFO - [GAME] > P2 blocks with Killer.
+14:04:15 - INFO - [GAME] > Combat : Harpie (5) vs Killer (1)
+14:04:15 - INFO - [GAME] > Harpie is destroyed.
+14:04:15 - INFO - [GAME] ✨ EFFET : STEAL_CREATURE (Val:1) pour Harpie
+14:04:15 - INFO - [GAME] ⌛ WAITING : P1 must choose a target for STEAL_CREATURE.
+14:04:15 - INFO - [GAME] 🔄 Handover to P1 for selection.
+14:04:15 - DEBUG - 🔄 Switch Player : P2 -> P1
+14:04:15 - INFO - [GAME] > Killer is destroyed.
+14:04:15 - INFO - [GAME]    -> Combat interrupted (Selection required).
+14:04:15 - DEBUG - ✔ Commande BLOCK exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.RESOLUTION_CHOICE, Active=P1
+14:04:15 - DEBUG - ▶ STEP REÇU : SELECT_BOARD_P2 (idx=0) | Phase: Phase.RESOLUTION_CHOICE | Active: P1
+14:04:15 - INFO - [GAME] > Target chosen : Target
+14:04:15 - INFO - [GAME]    -> Selection end.
+14:04:15 - DEBUG - 🔄 Switch Player : P1 -> P2
+14:04:15 - INFO - [GAME] --- Turn end. Turn of P2 ---
+14:04:15 - DEBUG - ✔ Commande SELECT_BOARD_P2 exécutée avec succès.
+14:04:15 - DEBUG -    -> Nouvel état : Phase=Phase.P2_MAIN, Active=P2
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - DEBUG - 🤖 [IA] Pas de Mindbug sur Rat (Valeur estimée: 1)
+14:04:15 - DEBUG - 🤖 [IA] Mindbug sur Dragon (Valeur estimée: 10)
+14:04:15 - DEBUG - 🤖 [IA] Mindbug sur Scorpion (Valeur estimée: 7)
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===
+14:04:15 - INFO - === INITIALISATION DU MOTEUR ===

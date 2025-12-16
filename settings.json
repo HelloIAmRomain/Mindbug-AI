@@ -1,8 +1,9 @@
 {
-    "game_mode": "HOTSEAT",
-    "debug_mode": false,
+    "game_mode": "PVE",
+    "debug_mode": true,
     "active_sets": [
-        "FIRST_CONTACT"
+        "FIRST_CONTACT",
+        "TEST_SET"
     ],
     "resolution": [
         1280,
@@ -10,5 +11,6 @@
     ],
     "enable_sound": true,
     "enable_effects": true,
-    "active_card_ids": []
+    "active_card_ids": [],
+    "ai_difficulty": 10
 }

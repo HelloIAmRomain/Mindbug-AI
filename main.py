@@ -2,6 +2,7 @@ import sys
 import os
 import pygame
 import traceback
+import gc
 
 # Ajout du chemin racine pour garantir que les imports fonctionnent
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +13,10 @@ from mindbug_gui.screens.menu_screen import MenuScreen
 from mindbug_gui.screens.settings_screen import SettingsScreen
 from mindbug_gui.window import MindbugGUI
 from mindbug_gui.resource_manager import ResourceManager
+
+# --- IMPORTS MOTEUR & IA ---
+from mindbug_engine.engine import MindbugGame
+from mindbug_ai.agent import MindbugAgent
 
 def main():
     """
@@ -24,6 +29,8 @@ def main():
     
     # 2. Chargement de la Configuration
     config = GameConfig()
+    # config.load_settings() est appelé dans le __init__ de GameConfig normalement,
+    # mais on peut le rappeler ici pour être sûr.
     
     # 3. Configuration de la Fenêtre
     w, h = config.settings.resolution
@@ -31,7 +38,6 @@ def main():
     pygame.display.set_caption(WINDOW_TITLE)
     
     # 4. Initialisation du Gestionnaire de Ressources (Pour les menus)
-    # Cela permet de charger les polices et images de fond une seule fois
     res_manager = ResourceManager()
     
     # 5. État initial
@@ -46,7 +52,6 @@ def main():
             
             # --- MENU PRINCIPAL ---
             if current_state == "MENU":
-                # On passe le res_manager pour éviter de recharger les fonts à chaque fois
                 menu = MenuScreen(screen, config, res_manager)
                 current_state = menu.run()
                 
@@ -57,13 +62,39 @@ def main():
                 
             # --- JEU (Gameplay) ---
             elif current_state == "PLAY":
-                print("Lancement du module de jeu (MindbugGUI)...")
-                # Le jeu gère ses propres ressources pour l'instant via son __init__
-                game_app = MindbugGUI(config, screen) 
+                print("\n--- Initialisation de la partie ---")
+                
+                # 1. Création du Moteur
+                game = MindbugGame(
+                    active_card_ids=config.active_card_ids,
+                    active_sets=config.active_sets,
+                    verbose=True 
+                )
+                
+                ai_bot = None
+                
+                # 2. Création de l'IA (SEULEMENT EN MODE PVE)
+                # CORRECTION ICI : On vérifie le mode
+                if config.game_mode == "PVE":
+                    ai_level = getattr(config, "ai_difficulty", 5)
+                    print(f"🤖 Création de l'Agent IA (Niveau {ai_level})...")
+                    ai_bot = MindbugAgent(name="Brainiac", level=ai_level)
+                else:
+                    print("👥 Mode PvP Local (Hotseat)")
+                
+                # 3. Lancement GUI
+                print("Lancement du module graphique...")
+                game_app = MindbugGUI(config, screen=screen)
+                
+                # On passe ai_bot (qui peut être None en PvP)
+                game_app.set_game(game, ai_agent=ai_bot)
+                
                 current_state = game_app.run()
                 
-                # Petit nettoyage après une partie (optionnel)
-                import gc
+                # Nettoyage
+                game = None
+                ai_bot = None
+                game_app = None
                 gc.collect()
                 
             else:
