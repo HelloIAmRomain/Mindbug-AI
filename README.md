@@ -1,141 +1,149 @@
-# 🐞 Mindbug Python Implementation
+# 👾 Mindbug Engine (Python)
 
-[![CI Tests](https://github.com/HelloIAmRomain/Mindbug-AI/actions/workflows/tests.yml/badge.svg)](https://github.com/HelloIAmRomain/Mindbug-AI/actions/workflows/tests.yml)
-![Python Version](https://img.shields.io/badge/python-3.12%2B-blue)
-![Coverage](./coverage.svg)
-![License](https://img.shields.io/badge/license-MIT-green)
+Un moteur de règles complet, robuste et testé pour le jeu de cartes Mindbug (Set First Contact). Ce projet implémente la logique métier (Backend/Engine) sans interface graphique, en se concentrant sur le respect strict des règles, la gestion des états et l'architecture logicielle.
 
-Une implémentation open-source, fidèle et robuste du jeu de cartes **Mindbug : Premier Contact**.
+## ✨ Fonctionnalités Clés
 
-Ce projet a une double vocation :
-1.  🎮 **Jeu Jouable (Hotseat) :** Permettre à deux humains de jouer sur le même écran.
-2.  🧠 **Laboratoire IA :** Fournir un moteur rigoureux pour entraîner des agents par Renforcement (RL).
+### Respect total des règles Mindbug
 
----
+- Gestion de la phase de Mindbug (Vol de carte)
+- Mécanique de Replay (si une carte est volée, le joueur rejoue)
+- Résolution complète des combats (mathématiques et effets)
 
-## ✨ Fonctionnalités (v1.1.1)
+### Système de Mots-Clés (Keywords)
 
-Le jeu est **Rules-Complete**. Toutes les mécaniques du set de base sont implémentées :
+Implémentation de FRENZY (Fureur), TOUGH (Tenace), POISON (Venimeux), SNEAKY (Furtif), HUNTER (Chasseur).
 
-* **Moteur de Jeu (Backend) :**
-    * Machine à états complète (Main, Mindbug, Block, Resolution).
-    * Gestion du **Mindbug Replay** (La victime rejoue son tour après un vol).
-    * Calculs dynamiques de puissance (Buffs, Debuffs, Auras).
-    * Mots-clés dynamiques (ex: *Requin Crabe*).
-    * Interruption de combat sur mort (ex: *Crapaud Bombe*).
-    * Mécaniques avancées : **Furie** (Double attaque), **Coriace**, **Chasseur**, **Venimeux**.
+### Moteur d'Effets Data-Driven
 
-* **Interface Graphique (Frontend) :**
-    * Rendu PyGame fluide (1280x768).
-    * **Feedback Visuel :** Surbrillance verte pour les coups légaux.
-    * **Gestion Défausse :** Overlay interactif pour consulter ou récupérer des cartes (*Dracompost*).
-    * Indicateurs de puissance colorés (Vert=Buff, Rouge=Debuff).
+- Les cartes sont définies dans un fichier JSON
+- Support des triggers : `ON_PLAY`, `ON_ATTACK`, `ON_DEATH`, `ON_UNBLOCKED`, `PASSIVE` (Auras)
+- Effets complexes : Vol (Main/Board), Défausse, Buffs conditionnels, Copie de mots-clés
 
-* **Infrastructure :**
-    * Compilation automatique en `.exe` (Windows/Linux) via GitHub Actions.
-    * Tests unitaires et d'intégration robustes.
+### Architecture V3 (Command Pattern)
 
----
-
-## 🚀 Installation & Lancement
-
-### Pour les Joueurs (Exécutable)
-Pas besoin d'installer Python !
-1.  Allez dans la section **[Releases](https://github.com/VOTRE_USERNAME/NOM_DU_REPO/releases)** du dépôt.
-2.  Téléchargez la dernière version pour votre OS :
-    * Windows : `MindbugAI-Windows.exe`
-    * Linux : `MindbugAI-Linux`
-3.  Lancez le fichier.
-
-### Pour les Développeurs (Source)
-
-**Pré-requis :** Python 3.12+
-
-1.  **Cloner le dépôt :**
-    ```bash
-    git clone [https://github.com/VOTRE_USERNAME/NOM_DU_REPO.git](https://github.com/VOTRE_USERNAME/NOM_DU_REPO.git)
-    cd mindbug-ai
-    ```
-
-2.  **Installer les dépendances :**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3.  **Lancer le jeu :**
-    ```bash
-    python main.py
-    ```
-
----
-
-## 🎮 Contrôles
-
-* **Clic Gauche :** Jouer une carte, Attaquer, Bloquer, Choisir une cible.
-* **Clic sur la Défausse (gauche) :** Ouvrir l'overlay pour voir les cartes détruites.
-* **Touche `D` :** Activer/Désactiver le **Mode Debug** (Voir les cartes de l'adversaire).
-* **Touche `ECHAP` :** Fermer l'overlay de défausse.
-
----
+- Séparation nette entre la demande d'action (Command) et son exécution
+- Système d'interruption pour les choix utilisateurs (`RESOLUTION_CHOICE`)
 
 ## 🏗️ Architecture Technique
 
-Le projet respecte une séparation stricte des responsabilités pour faciliter l'intégration future de l'IA.
+Le projet est structuré autour d'une architecture modulaire pour faciliter la maintenance et les tests.
 
-| Dossier | Description |
-| :--- | :--- |
-| **`mindbug_engine/`** | **Le Cerveau.** Logique pure, sans aucune dépendance graphique. Contient la machine à états, les règles et les effets. |
-| **`mindbug_gui/`** | **Le Visage.** Gère l'affichage PyGame et les inputs souris. Ne prend aucune décision logique. |
-| **`data/`** | **Les Données.** Contient `cards.json` (définition des 32 cartes). |
-| **`tests/`** | **La Qualité.** Tests unitaires et d'intégration (`pytest`). |
-
----
-
-## ✅ Tests & Qualité
-
-Le projet maintient une couverture de code élevée (> 80%) pour garantir la non-régression des règles complexes.
-
-Pour lancer les tests :
-```bash
-pytest tests/
-````
-
-Pour générer le rapport de couverture :
-
-```bash
-pytest --cov=mindbug_engine --cov-report=html tests/
+```mermaid
+graph TD
+    User[Interface / Test] -->|Command| Game[MindbugGame Façade]
+    Game --> CommandFactory
+    Game -->|Execute| Managers
+    subgraph Managers
+        TurnManager[Gestion des Tours & Phases]
+        CombatManager[Résolution Combats & Dégâts]
+        EffectManager[Application des Effets]
+        QueryManager[Sélections & Choix]
+    end
+    Managers --> State[GameState]
 ```
 
------
+### Dossiers Principaux
 
-## 📦 Créer une Release (CI/CD)
+- `mindbug_engine/core/` : Modèles de données (Card, Player, GameState)
+- `mindbug_engine/commands/` : Implémentation du pattern Command (PlayCard, Attack, Mindbug...)
+- `mindbug_engine/managers/` : Logique métier divisée par responsabilité
+- `data/` : Contient `cards.json` (la base de données des cartes)
 
-Le déploiement est automatisé via **GitHub Actions**.
+## 🚀 Installation & Utilisation
 
-1.  Ne jamais pousser directement sur `main`. Passer par des Pull Requests.
-2.  Pour publier une nouvelle version, créez un **Tag** git :
-    ```bash
-    git tag v1.2.0
-    git push origin v1.2.0
-    ```
-3.  La CI va automatiquement lancer les tests, compiler les exécutables et créer une Release GitHub.
+### Prérequis
 
------
+- Python 3.10 ou supérieur
+- pytest (pour les tests)
 
-## 🔮 Roadmap
+### Installation
 
-  * [x] Moteur de règles complet (v1.0)
-  * [x] Interface graphique jouable (v1.1)
-  * [x] Système de sélection interactif & Défausse (v1.1.1)
-  * [ ] **Environnement Gym pour IA (Prochaine étape)**
-  * [ ] Entraînement d'agents (PPO/DQN)
-  * [ ] Animations visuelles (Polish)
+```bash
+git clone https://github.com/HelloIAmRomain/Mindbug-AI.git
+cd mindbug-engine
+pip install -r requirements.txt
+```
 
------
+### Exemple d'utilisation (Script)
 
-## 📄 Crédits
+```python
+from mindbug_engine.engine import MindbugGame
 
-  * **Jeu original :** Mindbug (Conçu par Christian Kudahl, Marvin Hegen, Richard Garfield, Skaff Elias).
-  * **Développement :** [Votre Nom]
-  * **Licence :** MIT (Voir fichier LICENSE).
+# 1. Initialiser une partie
+game = MindbugGame(verbose=True)
+game.start_game()
+
+# 2. Joueur 1 joue une carte (Index 0 de sa main)
+# Le moteur gère automatiquement la pause pour le choix de Mindbug adverse
+game.step("PLAY", 0)
+
+# 3. L'adversaire (P2) décide de ne pas utiliser de Mindbug
+game.step("PASS")
+
+# 4. Fin de tour automatique, c'est au tour de P2
+# P2 attaque avec sa créature (Index 0 sur son board)
+game.step("ATTACK", 0)
+
+# 5. P1 bloque avec sa créature
+game.step("BLOCK", 0)
+```
+
+## 🧪 Tests & Qualité
+
+Le moteur est validé par une suite de tests exhaustive couvrant 100% des cartes du set de base.
+
+### Lancer les tests
+
+```bash
+pytest
+```
+
+### Structure des tests
+
+- `tests/unit/` : Tests isolés des managers (Effets, Combat)
+- `tests/integration/` :
+  - `test_engine_flow.py` : Vérifie le déroulement des tours, le Mindbug et le Replay
+  - `test_triggers.py` : Vérifie les interruptions (ex: Trigger sur mort)
+  - `test_full_set.py` : 32 tests vérifiant chaque carte spécifique du jeu (Dr. Axolotl, Kangousaurus Rex, etc.)
+
+## 🃏 Gestion des Données (JSON)
+
+Les cartes sont définies dans `data/cards.json`. Le moteur est agnostique : il suffit de modifier ce fichier pour ajouter de nouvelles cartes ou modifier l'équilibrage.
+
+### Exemple de définition (Furet Saboteur)
+
+```json
+{
+  "id": "09",
+  "name": "Furet saboteur",
+  "power": 2,
+  "keywords": ["SNEAKY"],
+  "trigger": "ON_PLAY",
+  "effects": [
+    {
+      "type": "DISCARD",
+      "target": {
+        "group": "OPPONENT",
+        "zone": "HAND",
+        "count": 2,
+        "select": "CHOICE_OPP"
+      }
+    }
+  ]
+}
+```
+
+## 📋 Roadmap & Améliorations futures
+
+- [x] Set "First Contact" complet
+- [x] Moteur de résolution (Combat, Effets, Mindbug)
+- [x] Tests d'intégration complets
+- [ ] Ajout du support pour l'extension "New Servants"
+- [ ] Ajout d'une IA surpuissante (le code existe mais l'ia est NULLE)
+
+
+## 📄 Licence
+
+Ce projet est un moteur open-source développé à des fins éducatives.
 

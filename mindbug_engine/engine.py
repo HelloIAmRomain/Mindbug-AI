@@ -1,395 +1,420 @@
 import random
-import sys
-import os
-from typing import Optional, List, Tuple
-from .models import Card, Player
-from .loaders import CardLoader
-from .rules import Phase, Keyword, CombatUtils
-from .effects import EffectManager
+import traceback
+import copy
+from typing import Optional, List, Tuple, Any
+
+from mindbug_engine.utils.logger import log_info, log_debug, log_error
+
+# --- IMPORTS CORE ---
+from mindbug_engine.core.models import Card, Player, SelectionRequest
+from mindbug_engine.core.state import GameState
+from mindbug_engine.core.consts import Phase, Trigger, Keyword
+
+# --- IMPORTS INFRASTRUCTURE ---
+from mindbug_engine.infrastructure.deck_factory import DeckFactory
 from constants import PATH_DATA
 
-# NOUVEAUX IMPORTS
-from .combat import CombatManager
-from .commands import (
-    PlayCardCommand, AttackCommand, BlockCommand, NoBlockCommand, 
-    MindbugCommand, PassCommand, ResolveSelectionCommand
-)
+# --- IMPORTS MANAGERS (V3 ARCHITECTURE) ---
+from mindbug_engine.managers.turn_manager import TurnManager
+from mindbug_engine.managers.combat_manager import CombatManager
+from mindbug_engine.managers.effect_manager import EffectManager
+from mindbug_engine.managers.query_manager import QueryManager
 
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
+# --- IMPORTS COMMANDS ---
+from mindbug_engine.commands.command_factory import CommandFactory
+
 
 class MindbugGame:
-    def __init__(self, deck_path=None, active_card_ids=None, active_sets=None):
-        
-        if deck_path is None:
-            deck_path = PATH_DATA if os.path.exists(PATH_DATA) else resource_path(os.path.join("data", "cards.json"))
-            
-        # 1. Loading
-        all_cards_loaded = CardLoader.load_deck(deck_path)
-        
-        # Filtre Sets
-        if active_sets:
-            all_cards = [c for c in all_cards_loaded if getattr(c, 'set', 'FIRST_CONTACT') in active_sets]
-            if not all_cards: all_cards = all_cards_loaded
-        else:
-            all_cards = all_cards_loaded
-        
-        # Filtre DeckBuilder
-        if active_card_ids:
-            self.full_deck = [c for c in all_cards if c.id in active_card_ids]
-            current_count = len(self.full_deck)
-            if current_count < 20:
-                selected_ids = set(c.id for c in self.full_deck)
-                available_pool = [c for c in all_cards if c.id not in selected_ids]
-                missing = 20 - current_count
-                if len(available_pool) >= missing:
-                    self.full_deck.extend(random.sample(available_pool, missing))
-                else:
-                    self.full_deck.extend(available_pool)
-        else:
-            self.full_deck = list(all_cards)
-            
-        self.all_cards_ref = list(all_cards)
-        random.shuffle(self.full_deck)
-        
-        # 2. Players
-        self.player1 = Player(name="P1")
-        self.player2 = Player(name="P2")
-        self.players = [self.player1, self.player2]
-        self._setup_player(self.player1)
-        self._setup_player(self.player2)
-        
-        # 3. State
-        self.active_player_idx = 0 
-        self.phase = Phase.P1_MAIN
-        self.turn_count = 1
-        self.winner = None
-        
-        self.pending_card: Optional[Card] = None        
-        self.pending_attacker: Optional[Card] = None 
-        self.selection_context = None
+    """
+    Façade principale du moteur de jeu.
+    Point d'entrée unique pour l'Interface Graphique (GUI) et l'IA.
 
-        self.end_turn_pending = False        
-        self.mindbug_replay_pending = False
-        self.frenzy_candidate = None
+    Responsabilités :
+    1. Initialiser la partie via l'Infrastructure (DeckFactory).
+    2. Orchestrer la boucle de jeu (Step).
+    3. Déléguer la logique métier aux Managers.
+    4. Exposer une API stable pour les Commandes et l'UI.
+    """
 
-        # 4. Managers (Combat & Effects)
-        self.effect_manager = EffectManager()
-        self.combat_manager = CombatManager(self) # <--- Nouveau
-    
-    def _setup_player(self, player):
+    def __init__(self,
+                 active_card_ids: Optional[List[str]] = None,
+                 active_sets: Optional[List[str]] = None,
+                 verbose: bool = True,
+                 deck_path: Optional[str] = None):
+
+        self.verbose = verbose
+        if self.verbose:
+            log_info("=== INITIALISATION DU MOTEUR ===")
+
+        # 1. SETUP INFRASTRUCTURE & STATE
+        path = deck_path if deck_path else PATH_DATA
+        self.deck_factory = DeckFactory(path)
+
+        # Création du deck et récupération des références
+        game_deck, all_cards_ref, used_sets = self.deck_factory.create_deck(
+            active_sets=active_sets,
+            active_card_ids=active_card_ids
+        )
+        self.used_sets = used_sets
+
+        # Initialisation de l'état (State)
+        p1 = Player(name="P1")
+        p2 = Player(name="P2")
+        self.state = GameState(game_deck, p1, p2)
+        self.state.all_cards_ref = all_cards_ref
+
+        # 2. INITIALISATION MANAGERS (Injection de dépendances)
+        # On passe 'self' (l'instance du jeu) aux managers qui ont besoin d'accéder
+        # à l'état global ou aux autres managers via la façade.
+
+        self.turn_manager = TurnManager(self)
+        self.query_manager = QueryManager(self)
+        self.combat_manager = CombatManager(self)  # Combat a besoin de l'Engine (self)
+        self.effect_manager = EffectManager(self)  # Effect a besoin de l'Engine (self)
+
+        # Injection croisée : Le CombatManager doit pouvoir déclencher des effets
+        self.combat_manager.effect_manager = self.effect_manager
+
+    def start_game(self):
+        """
+        Démarre la partie : Mélange, Distribution et Reset.
+        """
+        if not self.state.deck:
+            raise ValueError("Impossible de démarrer : Deck vide.")
+
+        if self.verbose:
+            log_info(f"🎲 START GAME... Deck: {len(self.state.deck)} cartes.")
+
+        random.shuffle(self.state.deck)
+
+        # Reset des mains (Sécurité pour restart)
+        self.state.player1.hand = []
+        self.state.player2.hand = []
+
+        # Distribution : 5 cartes chacun
         for _ in range(5):
-             if self.full_deck: player.hand.append(self.full_deck.pop())
-        for _ in range(5):
-             if self.full_deck: player.deck.append(self.full_deck.pop())
-        self.refill_hand(player)
+            if self.state.deck: self.state.player1.hand.append(self.state.deck.pop())
+            if self.state.deck: self.state.player2.hand.append(self.state.deck.pop())
 
-    def refill_hand(self, player):
-        while len(player.hand) < 5 and len(player.deck) > 0:
-            card = player.deck.pop()
-            player.hand.append(card)
+        # Setup initial
+        self.state.turn_count = 1
+        self.state.active_player_idx = 0
+        self.state.phase = Phase.P1_MAIN
 
-    @property
-    def active_player(self): return self.players[self.active_player_idx]
+        # Stats
+        self.state.player1.hp = 3
+        self.state.player2.hp = 3
+        self.state.player1.mindbugs = 2
+        self.state.player2.mindbugs = 2
 
-    @property
-    def opponent(self): return self.players[1 - self.active_player_idx]
+    # =========================================================================
+    #  GAME LOOP (STEP & MOVES)
+    # =========================================================================
 
-    # --- PONT VERS COMBAT MANAGER ---
-    def calculate_real_power(self, card: Card) -> int:
-        return self.combat_manager.calculate_real_power(card, self.active_player, self.opponent)
-
-    def resolve_combat(self, blocker: Optional[Card]):
+    def step(self, action_type: str, index: int = -1):
         """
-        Orchestre la résolution d'un combat.
-        Délègue les calculs au CombatManager et la gestion de flux aux helpers.
+        Exécute une action atomique.
+        Utilise la CommandFactory pour découpler l'intention de l'exécution.
         """
-        # 1. Identification des acteurs
-        attacker = self.pending_attacker
-        attacker_owner = self.opponent 
-        
-        # 2. Résolution mathématique (Dégâts, Morts, Effets)
-        att_dead, blk_dead = self.combat_manager.resolve_fight(attacker, blocker)
-        
-        # Nettoyage état temporaire
-        self.pending_attacker = None
-        
-        # 3. Interruption ? (Ex: Effet de mort nécessitant un choix)
-        if self.phase == Phase.RESOLUTION_CHOICE:
-            print("   -> Combat interrupted (Selection required).")
-            self.end_turn_pending = True
-            return 
-
-        # 4. Vérification Furie (Frenzy)
-        if self._try_activate_frenzy(attacker, attacker_owner, att_dead):
-            return # On stop ici, le tour continue pour l'attaquant
-
-        # 5. Fin de tour standard
-        # IMPORTANT : En ce moment, le joueur actif est le DÉFENSEUR.
-        # Si on appelle end_turn() directement, il va switch vers l'ATTAQUANT (P1).
-        # On veut que le prochain tour soit celui du DÉFENSEUR (P2).
-        # Donc, on remet l'attaquant actif pour que end_turn() fasse la passe correctement.
-        self.switch_active_player()
-        
-        self.end_turn()
-
-    def _check_frenzy_continuation(self):
-        # Logique simplifiée pour la fin de tour
-        # Si on avait un frenzy candidate et qu'il vient d'attaquer pour la 2eme fois, c'est fini
-        if self.frenzy_candidate:
-             # C'était la 2eme attaque ?
-             # Pour l'instant on finit le tour sauf si on implémente la double attaque
-             pass
-        
-        self.end_turn()
-
-    # --- MAIN LOOP STEP (ADAPTÉE POUR COMMANDES) ---
-    def step(self, action_type: str, target_idx: int = -1, target_blocker_idx: int = -1):
-        """
-        Point d'entrée principal. Convertit les strings (UI) en Commandes.
-        """
-        if self.winner: return
-        
-        # Mise à jour des mots-clés passifs avant toute action
-        self.update_board_states()
-
-        command = None
-
-        # Factory simple (Switch case)
-        if action_type == "PLAY":
-            command = PlayCardCommand(target_idx)
-        elif action_type == "ATTACK":
-            command = AttackCommand(target_idx, target_blocker_idx)
-        elif action_type == "BLOCK":
-            command = BlockCommand(target_idx)
-        elif action_type == "NO_BLOCK":
-            command = NoBlockCommand()
-        elif action_type == "MINDBUG":
-            command = MindbugCommand()
-        elif action_type == "PASS":
-            command = PassCommand()
-        elif action_type.startswith("SELECT_"):
-            # Ex: SELECT_BOARD_P1
-            parts = action_type.split("_", 1) # ["SELECT", "BOARD_P1"]
-            if len(parts) > 1:
-                command = ResolveSelectionCommand(parts[1], target_idx)
-
-        # Exécution
-        if command:
-            command.execute(self)
-            
-        self._check_win_condition()
-        self.refill_hand(self.player1)
-        self.refill_hand(self.player2)
-
-    # --- MÉTHODES UTILITAIRES POUR LES COMMANDES ---
-    # Ces méthodes sont appelées par les objets Command
-    
-    def switch_active_player(self):
-        self.active_player_idx = 1 - self.active_player_idx
-
-    def end_turn(self):
-        self.refill_hand(self.player1)
-        self.refill_hand(self.player2)
-        self.switch_active_player()
-        self.phase = Phase.P1_MAIN if self.active_player_idx == 0 else Phase.P2_MAIN
-        self.turn_count += 1
-        print(f"--- Turn end. Turn of {self.active_player.name} ---")
-
-    def execute_mindbug_replay(self):
-        self.switch_active_player() 
-        print(f"> Turn returns to {self.active_player.name} (Replays turn).")
-        self.phase = Phase.P1_MAIN if self.active_player_idx == 0 else Phase.P2_MAIN
-
-    def put_card_on_board(self, player, card):
-        player.board.append(card)
-        opponent = self.player2 if player == self.player1 else self.player1
-        
-        # Check Silence
-        is_silenced = False
-        for opp_card in opponent.board:
-            if opp_card.ability and opp_card.trigger == "PASSIVE" and opp_card.ability.code == "SILENCE_ON_PLAY":
-                print(f"> Effect cancelled by {opp_card.name} (Silence) !")
-                is_silenced = True
-                break
-                
-        if not is_silenced and card.trigger == "ON_PLAY":
-            self.effect_manager.apply_effect(self, card, player, opponent)
-
-    def resolve_selection_effect(self, selected_card: Card):
-        # Cette méthode est appelée par ResolveSelectionCommand
-        # Elle contient la logique des effets ciblés (Steal, Destroy...)
-        # Pour ne pas dupliquer le code de engine.py précédent, on le remet ici
-        # (Dans une version future, cela pourrait aller dans effect_manager)
-        ctx = self.selection_context
-        if not ctx: return
-
-        effect = ctx["effect_code"]
-        initiator = ctx["initiator"]
-        print(f"> Target chosen : {selected_card.name}")
-
-        if effect == "DESTROY_CREATURE" or effect == "DESTROY_IF_FEWER_ALLIES":
-            victim = self.player1 if selected_card in self.player1.board else self.player2
-            self.combat_manager.destroy_card(selected_card, victim)
-        
-        elif effect == "STEAL_CREATURE":
-            victim = self.player1 if selected_card in self.player1.board else self.player2
-            if selected_card in victim.board:
-                victim.board.remove(selected_card)
-                initiator.board.append(selected_card)
-        
-        elif effect == "HUNTER_TARGET":
-            print(f"   -> {initiator.name} forces {selected_card.name} to block !")
-            self.selection_context = None
-            if self.active_player_idx == 0: self.phase = Phase.P1_MAIN
-            else: self.phase = Phase.P2_MAIN
-            self.resolve_combat(selected_card)
+        if self.state.winner:
+            log_info("⚠️ Action ignorée : Partie terminée.")
             return
 
-        elif effect == "RECLAIM_DISCARD":
-            owner = self.player1 if selected_card in self.player1.discard else self.player2
-            if selected_card in owner.discard:
-                owner.discard.remove(selected_card)
-                initiator.hand.append(selected_card)
-                selected_card.reset()
+        if self.verbose:
+            log_info(f"▶ STEP : {action_type} (idx={index})")
 
-        elif effect == "PLAY_FROM_OPP_DISCARD" or effect == "PLAY_FROM_MY_DISCARD":
-            owner = self.player1 if selected_card in self.player1.discard else self.player2
-            if selected_card in owner.discard:
-                owner.discard.remove(selected_card)
-                self.put_card_on_board(initiator, selected_card)
-                selected_card.reset()
+        # 1. Mise à jour des états passifs avant action (Auras)
+        self.update_board_states()
 
-        ctx["count"] -= 1
-        if ctx["count"] <= 0:
-            print("   -> Selection end.")
-            self.selection_context = None
-            if self.mindbug_replay_pending:
-                self.mindbug_replay_pending = False
-                self.execute_mindbug_replay()
-            elif self.end_turn_pending:
-                self.end_turn_pending = False
-                self.end_turn()
+        # 2. Création et Exécution de la commande
+        try:
+            command = CommandFactory.create(action_type, index, self)
+            if command:
+                command.execute(self)
             else:
-                if self.active_player_idx == 0: self.phase = Phase.P1_MAIN
-                else: self.phase = Phase.P2_MAIN
-        else:
-            print(f"   -> Still {ctx['count']} target(s) to choose...")
+                log_debug(f"❌ Commande inconnue ou invalide : {action_type}")
+        except Exception as e:
+            log_error(f"❌ CRASH EXECUTION : {e}")
+            if self.verbose:
+                traceback.print_exc()
+            return
 
-    def update_board_states(self):
-        # Cette logique peut rester ici ou aller dans un RuleManager
-        for player in [self.player1, self.player2]:
-            opponent = self.player2 if player == self.player1 else self.player1
-            enemy_keywords = set()
-            for card in opponent.board:
-                enemy_keywords.update(card.keywords)
-                
-            for card in player.board:
-                if card.ability and card.trigger == "PASSIVE" and card.ability.code == "COPY_ALL_KEYWORDS_FROM_ENEMIES":
-                    target_keywords = ["HUNTER", "SNEAKY", "POISON", "FRENZY", "TOUGH"]
-                    for kw in target_keywords:
-                        if kw in enemy_keywords:
-                            if kw not in card.keywords: card.keywords.append(kw)
-                        else:
-                            if kw in card.keywords: card.keywords.remove(kw)
+        # 3. Post-Action : Vérifications système
+        self.turn_manager.check_win_condition()
+
+        # Note : Le remplissage de main est souvent géré par le TurnManager en fin de tour,
+        # mais on pourrait le forcer ici si besoin.
 
     def get_legal_moves(self) -> List[Tuple[str, int]]:
-        # La logique de génération des coups reste identique pour l'instant
+        """
+        Retourne la liste des coups légaux pour l'UI/IA.
+        """
+        # 1. Mise à jour des passifs (Crucial pour calculer les blocages légaux : Furtif, etc.)
         self.update_board_states()
+
+        if self.state.winner:
+            return []
+
         moves = []
-        player = self.active_player
-        if self.winner: return []
+        ap = self.state.active_player
+        phase = self.state.phase
 
-        if self.phase in [Phase.P1_MAIN, Phase.P2_MAIN]:
-            if self.frenzy_candidate:
-                if self.frenzy_candidate in player.board:
-                    idx = player.board.index(self.frenzy_candidate)
-                    moves.append(("ATTACK", idx))
-                for i in range(len(player.hand)): moves.append(("PLAY", i))
+        # --- A. FUREUR (Priorité absolue) ---
+        # Si une créature est en fureur, elle DOIT attaquer immédiatement.
+        if self.state.frenzy_candidate:
+            if self.state.frenzy_candidate in ap.board:
+                idx = ap.board.index(self.state.frenzy_candidate)
+                return [("ATTACK", idx)]
             else:
-                for i in range(len(player.hand)): moves.append(("PLAY", i))
-                for i in range(len(player.board)): moves.append(("ATTACK", i))
+                # La créature n'est plus sur le plateau (tuée par un effet ?), on annule la fureur.
+                self.state.frenzy_candidate = None
 
-        elif self.phase == Phase.MINDBUG_DECISION:
+        # --- B. PHASES PRINCIPALES (Action) ---
+        if phase in [Phase.P1_MAIN, Phase.P2_MAIN]:
+            # Jouer une carte de la main
+            moves.extend([("PLAY", i) for i in range(len(ap.hand))])
+            # Attaquer avec une créature
+            moves.extend([("ATTACK", i) for i in range(len(ap.board))])
+
+        # --- C. MINDBUG (Décision) ---
+        elif phase == Phase.MINDBUG_DECISION:
+            # On peut toujours refuser (Passer)
             moves.append(("PASS", -1))
-            if player.mindbugs > 0: moves.append(("MINDBUG", -1))
+            # On ne peut Mindbug que si on a des charges
+            if ap.mindbugs > 0:
+                moves.append(("MINDBUG", -1))
 
-        elif self.phase == Phase.BLOCK_DECISION:
+        # --- D. BLOCAGE (Défense) ---
+        elif phase == Phase.BLOCK_DECISION:
+            # On peut toujours choisir de ne pas bloquer (prendre les dégâts)
             moves.append(("NO_BLOCK", -1))
-            attacker = self.pending_attacker
+
+            attacker = self.state.pending_attacker
             if attacker:
-                for i, blocker in enumerate(player.board):
+                from mindbug_engine.utils.combat_utils import CombatUtils
+                # On liste uniquement les créatures capables de bloquer l'attaquant
+                for i, blocker in enumerate(ap.board):
                     if CombatUtils.can_block(attacker, blocker):
                         moves.append(("BLOCK", i))
 
-        elif self.phase == Phase.RESOLUTION_CHOICE:
-            if self.selection_context:
-                candidates = self.selection_context["candidates"]
-                for i, card in enumerate(self.player1.board):
-                    if card in candidates: moves.append(("SELECT_BOARD_P1", i))
-                for i, card in enumerate(self.player2.board):
-                    if card in candidates: moves.append(("SELECT_BOARD_P2", i))
-                for i, card in enumerate(self.player1.discard):
-                    if card in candidates: moves.append(("SELECT_DISCARD_P1", i))
-                for i, card in enumerate(self.player2.discard):
-                    if card in candidates: moves.append(("SELECT_DISCARD_P2", i))
+        # E. SÉLECTION (Targeting)
+        elif phase == Phase.RESOLUTION_CHOICE:
+            req = self.state.active_request
+            if req and req.candidates:
+                # Le référentiel est le SELECTOR
+                selector = req.selector
+                opp_selector = self.state.player2 if selector == self.state.player1 else self.state.player1
+
+                # -- ZONES DU SÉLECTEUR (Moi / SELECT_...) --
+                for i, c in enumerate(selector.hand):
+                    if c in req.candidates: moves.append(("SELECT_HAND", i))
+                for i, c in enumerate(selector.board):
+                    if c in req.candidates: moves.append(("SELECT_BOARD", i))
+                for i, c in enumerate(selector.discard):
+                    if c in req.candidates: moves.append(("SELECT_DISCARD", i))
+
+                # -- ZONES DE L'ADVERSAIRE DU SÉLECTEUR (Lui / SELECT_OPP_...) --
+                for i, c in enumerate(opp_selector.hand):
+                    if c in req.candidates: moves.append(("SELECT_OPP_HAND", i))
+                for i, c in enumerate(opp_selector.board):
+                    if c in req.candidates: moves.append(("SELECT_OPP_BOARD", i))
+                for i, c in enumerate(opp_selector.discard):
+                    if c in req.candidates: moves.append(("SELECT_OPP_DISCARD", i))
 
         return moves
 
-    def ask_for_selection(self, candidates: List[Card], effect_code: str, count: int, initiator: Player):
-        if not candidates:
-            print("   -> No target available (Selection cancelled).")
+
+    # =========================================================================
+    #  API PUBLIQUE (Façade pour Commandes & Effets)
+    # =========================================================================
+
+    def ask_for_selection(self, candidates: List[Any], reason: str, count: int, selector: Player, callback=None):
+        """
+        Délègue la demande de sélection au QueryManager.
+        Appelé par les Commandes (ex: Hunter) ou les Effets.
+        """
+        self.query_manager.start_selection_request(candidates, reason, count, selector, callback)
+
+    def execute_mindbug_replay(self):
+        """
+        Active la mécanique de 'Replay' après un Mindbug.
+        """
+        log_info("🔄 REPLAY ! The original player draws and plays again.")
+
+        # 1. Changement de joueur (Le voleur P2 -> La victime P1)
+        self.turn_manager.switch_active_player()
+
+        # 2. FIX PIOCHE : La victime doit refaire sa main à 5 cartes AVANT de rejouer
+        self.turn_manager.refill_hand(self.state.active_player)
+
+        # 3. Reset phase
+        self.state.phase = Phase.P1_MAIN if self.state.active_player_idx == 0 else Phase.P2_MAIN
+
+    def resolve_selection_effect(self, selected_object: Any):
+        """
+        Point d'entrée de la commande 'ResolveSelectionCommand'.
+        Gère la sélection et la REPRISE DU FLUX (Resume).
+        """
+        # 1. Délégation au Manager
+        is_completed = self.query_manager.resolve_selection([selected_object])
+
+        # 2. Logique de Reprise
+        if is_completed and self.state.phase == Phase.RESOLUTION_CHOICE:
+            log_info("▶️ Resuming flow after selection.")
+
+            # CAS 1 : REPLAY EN ATTENTE (Mindbug utilisé + Effet avec sélection)
+            if getattr(self.state, "mindbug_replay_pending", False):
+                self.state.mindbug_replay_pending = False
+                self.execute_mindbug_replay()
+                return
+
+            # CAS 2 : FIN DE TOUR STANDARD
+            # (Ou Fin de tour en attente via PassCommand)
+
+            # Correction de la synchronisation du joueur actif
+            if self.state.active_player_idx == 0 and self.state.active_player != self.state.player1:
+                self.turn_manager.switch_active_player()
+            elif self.state.active_player_idx == 1 and self.state.active_player != self.state.player2:
+                self.turn_manager.switch_active_player()
+
+            # On nettoie le flag si présent (optionnel mais propre)
+            if getattr(self.state, "end_turn_pending", False):
+                self.state.end_turn_pending = False
+
+            self.turn_manager.end_turn()
+
+    def resolve_combat(self, blocker: Optional[Card]):
+        """
+        Orchestre la résolution complète d'un combat.
+
+        Étapes :
+        1. Résolution mathématique (Dégâts, Morts, Effets) via CombatManager.
+        2. Mise à jour immédiate des états (ex: Retrait du mot-clé TOUGH si endommagé).
+        3. Gestion de la Fureur (Nouvelle attaque) OU Fin de tour.
+        """
+        attacker = self.state.pending_attacker
+        if not attacker:
             return
-        print(f"⌛ WAITING : {initiator.name} must choose a target for {effect_code}.")
-        self.selection_context = {
-            "candidates": candidates,
-            "effect_code": effect_code,
-            "count": count,
-            "initiator": initiator
-        }
-        self.phase = Phase.RESOLUTION_CHOICE
 
-    def _check_win_condition(self):
-        if self.player1.hp <= 0: self.winner = self.player2
-        elif self.player2.hp <= 0: self.winner = self.player1
+        # 1. RÉSOLUTION PHYSIQUE DU COMBAT
+        self.combat_manager.resolve_fight(attacker, blocker)
 
-    def _try_activate_frenzy(self, attacker: Card, owner: Player, is_dead: bool) -> bool:
+        # si la carte a été marquée 'is_damaged' pendant le combat.
+        self.update_board_states()
+
+        # Si un effet (ex: ON_DEATH) a déclenché une demande de sélection,
+        # on doit suspendre la résolution du combat et rendre la main au joueur.
+        if self.state.phase == Phase.RESOLUTION_CHOICE:
+            log_info("⏸️ Combat resolution paused for Selection.")
+            return
+
+        # Nettoyage de l'état temporaire
+        self.state.pending_attacker = None
+
+        # 2. VÉRIFICATION FUREUR (FRENZY)
+        # On vérifie si l'attaquant est toujours vivant et possède le mot-clé
+        att_owner = self.state.player1 if attacker in self.state.player1.board else self.state.player2
+        is_alive = attacker in att_owner.board
+        has_frenzy = Keyword.FRENZY in attacker.keywords
+
+        # Condition : Vivant + Fureur + C'est sa première attaque ce tour-ci
+        if is_alive and has_frenzy and self.state.frenzy_candidate != attacker:
+            log_info(f"🔥 FRENZY ! {attacker.name} prepares to attack again.")
+
+            # On mémorise que cet attaquant a déjà utilisé sa Fureur (pour ne pas boucler)
+            self.state.frenzy_candidate = attacker
+
+            # [FIX ETAT] Nous sommes en phase de Blocage (Joueur Actif = Défenseur).
+            # Pour la nouvelle attaque, il faut REDONNER la main à l'ATTAQUANT.
+            self.turn_manager.switch_active_player()
+
+            # On remet la phase principale appropriée pour permettre la commande ATTACK
+            self.state.phase = Phase.P1_MAIN if self.state.active_player_idx == 0 else Phase.P2_MAIN
+
+            # On quitte ici pour ne PAS finir le tour
+            return
+
+        # 3. FIN DE TOUR STANDARD
+        self.state.frenzy_candidate = None
+
+        # [FIX FIN DE TOUR]
+        # Actuellement, le joueur actif est le DÉFENSEUR (car nous étions en phase de blocage).
+        # Si on appelle end_turn() maintenant, il va passer la main à l'autre joueur (l'Attaquant).
+        # Or, on veut que le tour finisse et que ce soit au DÉFENSEUR de commencer SON tour.
+        #
+        # Solution : On switch manuellement vers l'ATTAQUANT maintenant...
+        self.turn_manager.switch_active_player()
+
+        # ... pour que end_turn() effectue le changement de tour correct vers le DÉFENSEUR (Next Player).
+        self.turn_manager.end_turn()
+
+    def check_game_over(self):
         """
-        Vérifie et applique la règle FRENZY (Furie).
-        Retourne True si une nouvelle attaque est déclenchée, False sinon.
+        Vérifie les conditions de victoire basées sur les PV.
         """
-        # Conditions :
-        # 1. La créature n'est pas morte (et est toujours sur le plateau)
-        survived = (not is_dead) and (attacker in owner.board)
-        # 2. Elle possède le mot-clé FRENZY
-        has_frenzy = Keyword.FRENZY.value in attacker.keywords
-        # 3. Ce n'était pas déjà l'attaque bonus (on ne peut pas enchaîner à l'infini)
-        is_bonus_attack = (self.frenzy_candidate == attacker)
-        
-        # On reset le candidat par défaut (sera réactivé si conditions remplies)
-        self.frenzy_candidate = None
-        
-        if survived and has_frenzy and not is_bonus_attack:
-            print(f"> FRENZY ! {attacker.name} can attack a second time.")
-            
-            # Stockage de l'état
-            self.frenzy_candidate = attacker
-            
-            # Transfert de la main au joueur attaquant
-            self.switch_active_player()
+        if self.state.player1.hp <= 0:
+            self.state.winner = self.state.player2
+            log_info(f"🏆 VICTOIRE : {self.state.player2.name} gagne la partie !")
+        elif self.state.player2.hp <= 0:
+            self.state.winner = self.state.player1
+            log_info(f"🏆 VICTOIRE : {self.state.player1.name} gagne la partie !")
 
-            # Mise à jour de la Phase
-            if self.active_player_idx == 0: 
-                self.phase = Phase.P1_MAIN
-            else: 
-                self.phase = Phase.P2_MAIN
-            
-            return True
-            
-        return False
+    def put_card_on_board(self, player: Player, card: Card):
+        """
+        Place une carte sur le plateau et gère les triggers OnPlay / Silence.
+        Méthode helper pour PlayCommand et EffectManager (ex: Rez).
+        """
+        # Note: Cette logique pourrait être dans TurnManager ou EffectManager,
+        # mais elle est souvent centrale. Ici on utilise l'EffectManager.
 
-    def render(self): pass
+        # 1. Pose physique
+        player.board.append(card)
+
+        # 2. Trigger On Play
+        # On délègue la vérification "Silence" (Ban) à l'EffectManager
+        # (Ou on le fait ici si EffectManager n'a pas de méthode 'check_silence')
+        # Pour simplifier, on suppose que l'effet manager gère ça ou on le fait manuellement:
+
+        opponent = self.state.player2 if player == self.state.player1 else self.state.player1
+        is_silenced = False
+        # (Logique de silence simplifiée)
+        from mindbug_engine.core.consts import EffectType
+        for opp_card in opponent.board:
+            if opp_card.trigger == Trigger.PASSIVE:
+                for eff in opp_card.effects:
+                    if eff.type == EffectType.BAN and eff.params.get("action") == "TRIGGER_ON_PLAY":
+                        is_silenced = True
+                        break
+
+        if not is_silenced and card.trigger == Trigger.ON_PLAY:
+            self.effect_manager.apply_effect(card, player, opponent)
+
+    def update_board_states(self):
+        """Met à jour les mots-clés (Passifs)."""
+        # Reset keywords de base
+        for p in self.state.players:
+            for c in p.board:
+                c.refresh_state()
+
+        # Applique les effets continus
+        self.effect_manager.apply_passive_effects()
+
+    # =========================================================================
+    #  UTILS & IA
+    # =========================================================================
+
+    def clone(self):
+        """Copie profonde pour l'IA (Simulation)."""
+        new_game = MindbugGame.__new__(MindbugGame)
+        new_game.verbose = False
+        new_game.deck_factory = self.deck_factory  # Stateless
+        new_game.state = copy.deepcopy(self.state)
+
+        # Reconstruction des managers liés au nouvel état
+        new_game.turn_manager = TurnManager(new_game)
+        new_game.query_manager = QueryManager(new_game)
+        new_game.combat_manager = CombatManager(new_game)
+        new_game.effect_manager = EffectManager(new_game)
+        new_game.combat_manager.effect_manager = new_game.effect_manager
+
+        return new_game

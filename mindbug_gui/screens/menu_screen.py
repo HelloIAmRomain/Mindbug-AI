@@ -1,86 +1,108 @@
 import pygame
-from constants import *
-from mindbug_gui.components import Button
+from mindbug_gui.screens.base_screen import BaseScreen
+from mindbug_gui.widgets.buttons import Button
 
-class MenuScreen:
-    """Écran principal du jeu : Jouer (Local), Options, Quitter."""
-    
-    def __init__(self, screen, config, res_manager):
-        self.screen = screen
-        self.config = config
-        self.res_manager = res_manager
-        self.clock = pygame.time.Clock()
-        
-        # Polices via Resource Manager
-        self.font_title = self.res_manager.get_font(80, bold=True)
-        self.font_btn = self.res_manager.get_font(40, bold=True)
-        
-        self.buttons = []
-        self._init_layout()
+# Imports propres depuis le core
+from mindbug_gui.core.colors import (
+    BG_COLOR, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT,
+    BTN_PLAY, BTN_PVP, BTN_SETTINGS, BTN_QUIT, BTN_HOVER
+)
 
-    def _init_layout(self):
-        w, h = self.screen.get_size()
-        cx = w // 2
-        cy = h // 2
-        
-        btn_w = int(w * 0.25) 
-        btn_h = int(h * 0.10) 
-        if btn_h > 80: btn_h = 80
-        
-        gap = int(btn_h * 1.2)
-        
-        self.buttons = [
-            Button(
-                (cx - btn_w//2, cy - gap, btn_w, btn_h),
-                "PvP (LOCAL)", self.font_btn, "PLAY_HOTSEAT",
-                color=COLOR_BTN_PLAY
-            ),
-            Button(
-                (cx - btn_w//2, cy, btn_w, btn_h), 
-                "PARAMÈTRES", self.font_btn, "SETTINGS",
-                color=COLOR_BTN_NORMAL
-            ),
-            Button(
-                (cx - btn_w//2, cy + gap, btn_w, btn_h), 
-                "QUITTER", self.font_btn, "QUIT", 
-                color=COLOR_BTN_QUIT
-            )
-        ]
 
-    def run(self):
-        """Boucle d'affichage du Menu."""
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return "QUIT"
-                
-                elif event.type == pygame.VIDEORESIZE:
-                    self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
-                    self._init_layout() 
-                
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    return "QUIT"
-                
-                for btn in self.buttons:
-                    if btn.is_clicked(event):
-                        if btn.action_id == "PLAY_HOTSEAT":
-                            self.config.game_mode = "HOTSEAT"
-                            return "PLAY"
-                        return btn.action_id
+class MenuScreen(BaseScreen):
+    def __init__(self, app):
+        super().__init__(app)
+        self.res = app.res_manager
+        self.widgets = []
+        self._init_ui()
 
-            self.screen.fill(COLOR_BG_MENU)
-            
-            w, h = self.screen.get_size()
-            
-            title = self.font_title.render("MINDBUG AI", True, COLOR_BLACK)
-            title_rect = title.get_rect(center=(w // 2, h * 0.15))
-            self.screen.blit(title, title_rect)
-            
-            for btn in self.buttons:
-                btn.draw(self.screen)
-            
-            pygame.display.flip()
-            self.clock.tick(FPS_CAP)
-            
-        return "QUIT"
+    def on_resize(self, w, h):
+        super().on_resize(w, h)
+        self._init_ui()
+
+    def _init_ui(self):
+        self.widgets.clear()
+
+        cx = self.width // 2
+        cy = self.height // 2
+
+        # --- TITRE & SOUS-TITRE ---
+        font_title = self.res.get_font(80, bold=True)
+        font_sub = self.res.get_font(30, bold=True)
+
+        self.title_surf = font_title.render("MINDBUG", True, TEXT_PRIMARY)
+        self.title_rect = self.title_surf.get_rect(center=(cx, cy - 180))
+
+        self.subtitle_surf = font_sub.render("ONLINE", True, ACCENT)
+        self.subtitle_rect = self.subtitle_surf.get_rect(center=(cx, cy - 120))
+
+        # --- BOUTONS ---
+        font_btn = self.res.get_font(24, bold=True)
+        w_btn, h_btn = 320, 55
+        spacing = 25
+        start_y = cy - 40
+
+        # 1. PvE
+        self.widgets.append(Button(
+            x=cx - w_btn // 2, y=start_y,
+            width=w_btn, height=h_btn,
+            text="JOUER SOLO (VS IA)",
+            font=font_btn,
+            action="START_PVE",  # Action explicite
+            bg_color=BTN_PLAY, hover_color=BTN_HOVER
+        ))
+
+        # 2. PvP (Local)
+        self.widgets.append(Button(
+            x=cx - w_btn // 2, y=start_y + h_btn + spacing,
+            width=w_btn, height=h_btn,
+            text="JOUER À DEUX (LOCAL)",
+            font=font_btn,
+            action="START_PVP",  # Action explicite
+            bg_color=BTN_PVP, hover_color=BTN_HOVER
+        ))
+
+        # 3. Settings
+        self.widgets.append(Button(
+            x=cx - w_btn // 2, y=start_y + (h_btn + spacing) * 2,
+            width=w_btn, height=h_btn,
+            text="PARAMÈTRES",
+            font=font_btn,
+            action="GOTO_SETTINGS",
+            bg_color=BTN_SETTINGS, hover_color=BTN_HOVER
+        ))
+
+        # 4. Quit
+        self.widgets.append(Button(
+            x=cx - w_btn // 2, y=start_y + (h_btn + spacing) * 3,
+            width=w_btn, height=h_btn,
+            text="QUITTER",
+            font=font_btn,
+            action="QUIT_APP",
+            bg_color=BTN_QUIT, hover_color=BTN_HOVER
+        ))
+
+    def handle_events(self, events):
+        for event in events:
+            for widget in self.widgets:
+                action = widget.handle_event(event)
+                if action:
+                    return action  # On remonte l'action brute au contrôleur
+        return None
+
+    def update(self, dt):
+        mouse_pos = pygame.mouse.get_pos()
+        for w in self.widgets:
+            w.update(dt, mouse_pos)
+
+    def draw(self, surface):
+        surface.fill(BG_COLOR)
+        surface.blit(self.title_surf, self.title_rect)
+        surface.blit(self.subtitle_surf, self.subtitle_rect)
+
+        for w in self.widgets:
+            w.draw(surface)
+
+        # Version
+        ver = self.res.get_font(16).render("v3.1 - Stable", True, TEXT_SECONDARY)
+        surface.blit(ver, (15, self.height - 25))

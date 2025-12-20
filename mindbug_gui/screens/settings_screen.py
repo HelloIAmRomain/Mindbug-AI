@@ -1,237 +1,252 @@
 import pygame
-from constants import *
-from mindbug_gui.components import Button, Toggle, CardThumbnail
-from mindbug_engine.loaders import CardLoader
+from typing import List
 
-class SettingsScreen:
-    """Écran de configuration, gestion des Sets et sélection de deck."""
-    
-    def __init__(self, screen, config, res_manager):
-        self.screen = screen
-        self.config = config
-        self.res_manager = res_manager
-        self.clock = pygame.time.Clock()
-        
-        self.font = self.res_manager.get_font(20)
-        self.font_title = self.res_manager.get_font(40, bold=True)
-        self.font_popup = self.res_manager.get_font(30, bold=True)
-        
-        self.is_confirming = False
-        
-        # Données
-        self.all_cards = CardLoader.load_deck(PATH_DATA)
-        self.available_sets = sorted(list(set(c.set for c in self.all_cards)))
-        
-        # UI Elements
-        self.toggles_options = []
-        self.toggles_sets = []
-        self.thumbnails = []
-        self.btn_back = None
-        self.btn_yes = None
-        self.btn_no = None
-        
-        self._init_layout()
+# --- GUI BASE & WIDGETS ---
+from mindbug_gui.screens.base_screen import BaseScreen
+from mindbug_gui.widgets.buttons import Button, Toggle, UIWidget
 
-    def _init_layout(self):
-        w, h = self.screen.get_size()
-        cx, cy = w // 2, h // 2
-        
-        # --- OPTIONS ---
-        opt_y = int(h * 0.12)
-        col1_x = int(w * 0.15)
-        
-        self.toggles_options = [
-            Toggle(col1_x, opt_y, "Mode Debug (Voir mains)", self.font, initial_value=self.config.debug_mode),
-            Toggle(col1_x, opt_y + 40, "Effets Sonores", self.font, initial_value=self.config.enable_sound),
-            Toggle(col1_x, opt_y + 80, "Animations", self.font, initial_value=self.config.enable_effects),
-        ]
-        
-        # --- SETS ---
-        col_set_x = int(w * 0.55) 
-        set_y = opt_y
-        
-        existing_states = {t.set_id: t.value for t in self.toggles_sets} if self.toggles_sets else {}
-        
-        self.toggles_sets = []
-        for set_name in self.available_sets:
-            if set_name in existing_states:
-                is_active = existing_states[set_name]
-            else:
-                is_active = set_name in self.config.active_sets
+# --- CONFIG & COLORS ---
+from mindbug_gui.core.settings_config import DIFFICULTY_UI_CONFIG
+from mindbug_gui.core.colors import (
+    TEXT_PRIMARY, TEXT_SECONDARY, ACCENT,
+    BTN_SURFACE, BTN_DANGER, BTN_HOVER
+)
 
-            display_name = set_name.replace("_", " ").title()
-            label = f"Set : {display_name}"
-            
-            tog = Toggle(col_set_x, set_y, label, self.font, initial_value=is_active)
-            tog.set_id = set_name
-            
-            self.toggles_sets.append(tog)
-            set_y += 40
-            
-        # --- GRILLE ---
-        start_x = int(w * 0.05)
-        start_y = int(h * 0.35)
-        
-        active_visual_sets = [t.set_id for t in self.toggles_sets if t.value]
-        cards_to_show = [c for c in self.all_cards if c.set in active_visual_sets]
 
-        cards_per_row = 12
-        total_gap = (cards_per_row + 1) * 10
-        avail_w = w - (start_x * 2)
-        
-        thumb_w = (avail_w - total_gap) // cards_per_row
-        if thumb_w < 40: thumb_w = 40
-        thumb_h = int(thumb_w * 1.4)
-        
-        gap_x = 10
-        gap_y = 10
-        
-        self.thumbnails = []
-        for i, card in enumerate(cards_to_show):
-            r = i // cards_per_row
-            c = i % cards_per_row
-            x = start_x + c * (thumb_w + gap_x)
-            y = start_y + r * (thumb_h + gap_y)
-            
-            if y + thumb_h > h - 80: break 
+class SettingsScreen(BaseScreen):
+    """
+    Écran de configuration du jeu.
+    Permet de modifier la difficulté, le mode debug et les sets actifs.
+    """
 
-            is_sel = True
-            if self.config.active_card_ids: 
-                is_sel = card.id in self.config.active_card_ids
-            
-            img = self.res_manager.get_image(card.image_path)
-            fake_cache = {card.image_path: img}
-            
-            self.thumbnails.append(CardThumbnail(
-                card, x, y, thumb_w, thumb_h, fake_cache, is_sel
-            ))
+    def __init__(self, app):
+        super().__init__(app)
+        self.config = app.config
+        self.res = app.res_manager
 
-        # --- BOUTONS ---
-        btn_w, btn_h = 250, 50
-        self.btn_back = Button(
-            (cx - btn_w//2, h - 70, btn_w, btn_h), 
-            "SAUVEGARDER & RETOUR", self.font, "BACK",
-            color=COLOR_BTN_NORMAL
+        # Liste typée pour l'IDE
+        self.widgets: List[UIWidget] = []
+
+        # Construction initiale de l'interface
+        self._init_ui()
+
+    def on_resize(self, w, h):
+        """Recalcule la mise en page lors du redimensionnement."""
+        super().on_resize(w, h)
+        self._init_ui()
+
+    def _init_ui(self):
+        """Génère tous les widgets de l'écran."""
+        self.widgets.clear()
+
+        cx = self.width // 2
+        y = 60
+        spacing = 50
+
+        # Styles de police
+        font_title = self.res.get_font(60, bold=True)
+        font_sub = self.res.get_font(28, bold=True)
+        font_widget = self.res.get_font(24)
+        font_small = self.res.get_font(18)
+
+        # 1. TITRE
+        self.title_surf = font_title.render("PARAMÈTRES", True, TEXT_PRIMARY)
+        self.title_rect = self.title_surf.get_rect(center=(cx, y))
+        y += 100
+
+        # 2. SÉLECTION DIFFICULTÉ (Bouton Cycle)
+        curr_diff = self.config.ai_difficulty
+        # On récupère les métadonnées (label, couleur) depuis la config statique
+        ui_data = DIFFICULTY_UI_CONFIG.get(curr_diff, DIFFICULTY_UI_CONFIG[list(DIFFICULTY_UI_CONFIG.keys())[0]])
+
+        btn_diff = Button(
+            x=cx - 150, y=y, width=300, height=50,
+            text=f"NIVEAU : {ui_data['label']}",
+            font=font_widget,
+            action="CYCLE_DIFF",
+            bg_color=BTN_SURFACE,
+            text_color=ui_data['color'],
+            hover_color=BTN_HOVER
         )
+        self.widgets.append(btn_diff)
 
-        self.btn_yes = Button((cx - 110, cy + 40, 100, 50), "OUI", self.font_popup, "YES", color=COLOR_BTN_PLAY)
-        self.btn_no = Button((cx + 10, cy + 40, 100, 50), "NON", self.font_popup, "NO", color=COLOR_BTN_QUIT)
+        # Description sous le bouton
+        self.desc_surf = font_small.render(ui_data['desc'], True, TEXT_SECONDARY)
+        self.desc_rect = self.desc_surf.get_rect(center=(cx, y + 40))
+        y += 90
 
-    def run(self):
-        """Boucle d'affichage des Paramètres."""
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.save_config()
-                    return "QUIT"
-                
-                elif event.type == pygame.VIDEORESIZE:
-                    self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
-                    self._init_layout()
-                
-                sets_changed = False
-                for t_set in self.toggles_sets:
-                    if t_set.handle_event(event):
-                        sets_changed = True
-                
-                if sets_changed:
-                    self._init_layout()
-                    continue 
+        # 3. OPTIONS GLOBALES (Toggles)
+        # Mode Debug
+        tg_debug = Toggle(
+            cx=cx, y=y,
+            label_text="Mode Debug",
+            font=font_widget,
+            initial_value=self.config.debug_mode,
+            action="TOGGLE_DEBUG"
+        )
+        self.widgets.append(tg_debug)
+        y += spacing
 
-                if self.is_confirming:
-                    if self.btn_yes.is_clicked(event):
-                        self.save_config()
-                        return "MENU"
-                    if self.btn_no.is_clicked(event):
-                        self.is_confirming = False
-                    if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                         self.is_confirming = False
-                    continue 
+        # Plein Écran (Si supporté par la config)
+        if hasattr(self.config, "fullscreen"):
+            tg_full = Toggle(
+                cx=cx, y=y,
+                label_text="Plein Écran",
+                font=font_widget,
+                initial_value=self.config.fullscreen,
+                action="TOGGLE_FULLSCREEN"
+            )
+            self.widgets.append(tg_full)
+            y += spacing
 
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    self.is_confirming = True 
-                    continue
-                
-                for tog in self.toggles_options: tog.handle_event(event)
-                for thumb in self.thumbnails: thumb.handle_event(event)
-                
-                if self.btn_back.is_clicked(event):
-                    self.is_confirming = True
+        y += 20  # Espacement section
 
-            # DESSIN
-            self.screen.fill(COLOR_BG_MENU)
-            w, h = self.screen.get_size()
-            
-            t_opt = self.font_title.render("Options & Extensions", True, COLOR_BLACK)
-            self.screen.blit(t_opt, (w * 0.05, h * 0.05))
-            
-            t_deck = self.font_title.render("Cartes Actives", True, COLOR_BLACK)
-            self.screen.blit(t_deck, (w * 0.05, h * 0.28))
-            
-            nb_sel = sum(1 for t in self.thumbnails if t.is_selected)
-            txt_count = self.font.render(f"Sélectionnées : {nb_sel} / {len(self.thumbnails)} (Total affiché)", True, (100, 100, 100))
-            self.screen.blit(txt_count, (w * 0.4, h * 0.30))
+        # 4. GESTION DES EXTENSIONS (Sets)
+        self.sets_title_surf = font_sub.render("EXTENSIONS ACTIVES", True, ACCENT)
+        self.sets_title_rect = self.sets_title_surf.get_rect(center=(cx, y))
+        y += spacing
 
-            for tog in self.toggles_options: tog.draw(self.screen)
-            for tog in self.toggles_sets: tog.draw(self.screen)
-            
-            for thumb in self.thumbnails: thumb.draw(self.screen)
-            self.btn_back.draw(self.screen)
-            
-            if self.is_confirming:
-                self.draw_popup()
+        avail = self.config.available_sets_in_db
+        active = self.config.active_sets
 
-            pygame.display.flip()
-            self.clock.tick(FPS_CAP)
-
-    def draw_popup(self):
-        w, h = self.screen.get_size()
-        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
-        overlay.fill(COLOR_OVERLAY)
-        self.screen.blit(overlay, (0,0))
-        
-        box_w, box_h = 500, 250
-        cx, cy = w // 2, h // 2
-        rect = pygame.Rect(cx - box_w//2, cy - box_h//2, box_w, box_h)
-        
-        pygame.draw.rect(self.screen, COLOR_BG_MENU, rect, border_radius=20)
-        pygame.draw.rect(self.screen, COLOR_BLACK, rect, 4, border_radius=20)
-        
-        txt1 = self.font_title.render("Sauvegarder", True, COLOR_BLACK)
-        txt2 = self.font.render("et retourner au menu ?", True, (50,50,50))
-        
-        t1_rect = txt1.get_rect(center=(cx, cy - 40))
-        t2_rect = txt2.get_rect(center=(cx, cy))
-        
-        self.screen.blit(txt1, t1_rect)
-        self.screen.blit(txt2, t2_rect)
-        
-        self.btn_yes.draw(self.screen)
-        self.btn_no.draw(self.screen)
-
-    def save_config(self):
-        self.config.debug_mode = self.toggles_options[0].value
-        self.config.enable_sound = self.toggles_options[1].value
-        self.config.enable_effects = self.toggles_options[2].value
-        
-        new_active_sets = [t.set_id for t in self.toggles_sets if t.value]
-        if not new_active_sets:
-            if "FIRST_CONTACT" in self.available_sets:
-                new_active_sets = ["FIRST_CONTACT"]
-            elif self.available_sets:
-                new_active_sets = [self.available_sets[0]]
-        self.config.active_sets = new_active_sets
-
-        visible_selected = {t.card.id for t in self.thumbnails if t.is_selected}
-        previous_selected = set(self.config.active_card_ids) if self.config.active_card_ids else set()
-        visible_ids = {t.card.id for t in self.thumbnails}
-        hidden_selected = previous_selected - visible_ids
-        final_ids = list(visible_selected.union(hidden_selected))
-        
-        if len(final_ids) == len(self.all_cards) or len(final_ids) == 0:
-            self.config.active_card_ids = []
+        if not avail:
+            # Cas fallback si aucun fichier chargé
+            self.widgets.append(Button(cx - 150, y, 300, 40, "Aucun Set Trouvé", font_widget, None))
+            y += spacing
         else:
-            self.config.active_card_ids = final_ids
+            for s_id in avail:
+                is_active = (s_id in active)
+                # On crée un Toggle par set
+                tg_set = Toggle(
+                    cx=cx, y=y,
+                    label_text=s_id.replace("_", " ").title(),  # Joli formatage
+                    font=font_widget,
+                    initial_value=is_active,
+                    action=f"TOGGLE_SET:{s_id}"
+                )
+                self.widgets.append(tg_set)
+                y += spacing
 
+        # 5. PIED DE PAGE (Bouton Retour)
+        # On le colle en bas, ou juste après le contenu si l'écran est grand
+        btn_y = max(y + 30, self.height - 80)
+
+        btn_back = Button(
+            x=cx - 100, y=btn_y, width=200, height=50,
+            text="RETOUR",
+            font=font_widget,
+            action="MENU",
+            bg_color=BTN_DANGER,
+            hover_color=BTN_HOVER
+        )
+        self.widgets.append(btn_back)
+
+    def handle_events(self, events):
+        """Gestion centralisée des événements."""
+        for event in events:
+            # Raccourci Clavier
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self._save_and_exit()
+                return "MENU"
+
+            # Gestion Widgets
+            for widget in self.widgets:
+                action = widget.handle_event(event)
+
+                if action:
+                    return self._process_action(action)
+        return None
+
+    def _process_action(self, action: str):
+        """Logique métier déclenchée par les widgets."""
+
+        if action == "MENU":
+            self._save_and_exit()
+            return "MENU"
+
+        elif action == "CYCLE_DIFF":
+            self._cycle_difficulty()
+            return None  # On reste sur l'écran
+
+        elif action == "TOGGLE_DEBUG":
+            self.config.debug_mode = not self.config.debug_mode
+            # On ne reconstruit pas tout l'UI, le toggle a déjà changé visuellement
+            # Mais pour Debug, parfois on veut voir l'effet immédiat, ici pas nécessaire.
+            return None
+
+
+
+        elif action == "TOGGLE_FULLSCREEN":
+            # 1. On met à jour la config (Donnée)
+            self.config.fullscreen = not self.config.fullscreen
+            # 2. On applique immédiatement le changement graphique (Visuel)
+            self.app.apply_display_mode()
+            # 3. Comme la taille de l'écran a changé, on force un recalcul de l'UI Settings
+            # (Car on_resize a été appelé sur l'app, mais on veut être sûr que le toggle reste centré)
+            w, h = self.app.screen.get_size()
+            self.on_resize(w, h)
+            return None
+
+        elif action.startswith("TOGGLE_SET:"):
+            set_id = action.split(":")[1]
+            # On inverse l'état dans la config
+            # Note : Le widget Toggle a déjà inversé son état visuel (self.value)
+            # Il faut juste s'assurer que la config suit.
+            is_currently_active = set_id in self.config.active_sets
+            self._update_sets_config(set_id, not is_currently_active)
+
+            # Ici on doit recharger l'UI car si l'utilisateur a tenté de désactiver
+            # le dernier set, la logique _update_sets_config l'en a peut-être empêché.
+            # Le Toggle visuel serait alors "OFF" alors que la config est restée "ON".
+            self._init_ui()
+            return None
+
+        return None
+
+    def _cycle_difficulty(self):
+        """Passe à la difficulté suivante."""
+        curr = self.config.ai_difficulty
+        if curr in DIFFICULTY_UI_CONFIG:
+            next_diff = DIFFICULTY_UI_CONFIG[curr]["next"]
+            self.config.ai_difficulty = next_diff
+            self._init_ui()  # Refresh pour changer le texte et la couleur du bouton
+
+    def _update_sets_config(self, set_id, should_be_active):
+        """Met à jour la liste des sets avec sécurité (min 1 set actif)."""
+        sets = self.config.active_sets
+
+        if should_be_active:
+            if set_id not in sets:
+                sets.append(set_id)
+        else:
+            # Règle métier : On ne peut pas désactiver le dernier set
+            if set_id in sets and len(sets) > 1:
+                sets.remove(set_id)
+            else:
+                print("⚠️ Impossible de désactiver le dernier set.")
+
+    def _save_and_exit(self):
+        """Sauvegarde sur le disque en quittant."""
+        print("💾 Sauvegarde des paramètres...")
         self.config.save_settings()
+
+    def update(self, dt):
+        """Animation et Hover."""
+        mouse_pos = pygame.mouse.get_pos()
+        for w in self.widgets:
+            w.update(dt, mouse_pos)
+
+    def draw(self, surface):
+        """Rendu."""
+        # Titres
+        surface.blit(self.title_surf, self.title_rect)
+        surface.blit(self.desc_surf, self.desc_rect)
+        surface.blit(self.sets_title_surf, self.sets_title_rect)
+
+        # Widgets
+        for w in self.widgets:
+            w.draw(surface)
+
+        # Footer version
+        v_txt = self.res.get_font(16).render("v3.0 Architecture Propre", True, TEXT_SECONDARY)
+        surface.blit(v_txt, (15, self.height - 25))
