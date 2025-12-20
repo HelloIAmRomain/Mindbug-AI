@@ -1,6 +1,7 @@
 import pygame
 from typing import List
 
+from mindbug_engine.utils.logger import log_info
 # --- GUI BASE & WIDGETS ---
 from mindbug_gui.screens.base_screen import BaseScreen
 from mindbug_gui.widgets.buttons import Button, Toggle, UIWidget
@@ -205,7 +206,7 @@ class SettingsScreen(BaseScreen):
 
     def _save_and_exit(self):
         """Persiste les paramètres via le ConfigurationService avant de quitter."""
-        print("💾 Sauvegarde des paramètres en cours...")
+        log_info("💾 Sauvegarde des paramètres en cours...")
         self.config.save()
 
     def update(self, dt):

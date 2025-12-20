@@ -90,8 +90,8 @@ class MindbugGame:
         self.history = []  # Pour un futur système de Replay / Undo
 
         if self.verbose:
-            print(f"🎮 Jeu initialisé avec les sets : {used_sets}")
-            print(f"🤖 Difficulté IA : {self.config.ai_difficulty.value}")
+            log_info(f"🎮 Jeu initialisé avec les sets : {used_sets}")
+            log_info(f"🤖 Difficulté IA : {self.config.ai_difficulty.value}")
 
     def start_game(self):
         """

@@ -1,8 +1,12 @@
-from typing import Any, List
+from typing import Any, List, TYPE_CHECKING
 from mindbug_engine.core.consts import Phase
-from mindbug_engine.core.models import SelectionRequest, GameState
+from mindbug_engine.core.models import SelectionRequest
 from mindbug_engine.utils.logger import log_info, log_debug, log_error
 
+# Import conditionnel pour éviter les cycles, ou import direct depuis le bon fichier
+if TYPE_CHECKING:
+    from mindbug_engine.core.state import GameState
+    from mindbug_engine.engine import MindbugGame
 
 class QueryManager:
     """
@@ -10,7 +14,7 @@ class QueryManager:
     Gère le cycle de vie d'une SelectionRequest.
     """
 
-    def __init__(self, game):
+    def __init__(self, game: 'MindbugGame'):
         # On stocke 'game' complet car on a besoin d'accéder à game.state ET parfois game.verbose
         self.game = game
 

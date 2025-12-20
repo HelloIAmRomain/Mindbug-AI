@@ -9,7 +9,6 @@ from mindbug_engine.infrastructure.card_loader import CardLoader
 from constants import PATH_DATA
 
 from mindbug_engine.utils.logger import log_info, log_debug, log_error
-from mindbug_engine.managers.settings_manager import SettingsManager
 
 
 class MindbugApp:

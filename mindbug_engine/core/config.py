@@ -2,11 +2,12 @@ import json
 import os
 from typing import List, Tuple
 from mindbug_engine.core.consts import Difficulty
+from mindbug_engine.utils.logger import log_error
+
 
 class ConfigurationService:
     """
     Service unique gérant la persistance et la validation des paramètres.
-    Remplace SettingsManager, GameConfig et l'ancienne classe Config.
     """
     FILE_PATH = "settings.json"
 
@@ -50,7 +51,7 @@ class ConfigurationService:
                 if saved_sets:
                     self.active_sets = saved_sets
         except Exception as e:
-            print(f"⚠️ Erreur lors du chargement des paramètres : {e}")
+            log_error(f"⚠️ Erreur lors du chargement des paramètres : {e}")
 
     def save(self):
         """Persiste les paramètres actuels sur le disque."""
@@ -66,4 +67,4 @@ class ConfigurationService:
             with open(self.FILE_PATH, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4)
         except Exception as e:
-            print(f"❌ Erreur lors de la sauvegarde : {e}")
+            log_error(f"❌ Erreur lors de la sauvegarde : {e}")

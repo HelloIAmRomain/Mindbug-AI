@@ -36,6 +36,7 @@ class EffectManager:
         }
 
     def apply_effect(self, card: Card, owner: Player, opponent: Player):
+        """Point d'entrée principal pour déclencher les effets d'une carte."""
         if not card.effects: return
         for effect in card.effects:
             if self._check_global_conditions(effect.condition, owner, opponent):
@@ -68,8 +69,52 @@ class EffectManager:
                     for t in targets:
                         self._dispatch_verb(effect, t, card, owner, opp)
 
+    def _process_single_effect(self, effect: CardEffect, source_card: Card, owner: Player, opponent: Player):
+        """Gère la sélection des cibles (Auto, Random, Choix) puis exécute l'action."""
+        candidates = self._get_candidates(effect, source_card, owner, opponent)
+        valid_targets = self._filter_targets(candidates, effect.condition)
+        
+        if not valid_targets: return
+
+        select_method = effect.target.get("select", "ALL")
+        count = effect.target.get("count", 1)
+
+        # Définition de la callback exécutée une fois les cibles choisies
+        def on_selection_complete(selected_targets):
+            for target in selected_targets:
+                self._dispatch_verb(effect, target, source_card, owner, opponent)
+
+        # Logique de sélection
+        if select_method == "ALL":
+            on_selection_complete(valid_targets)
+        
+        elif select_method == "RANDOM":
+            nb = len(valid_targets) if count == "ALL" else count
+            # random.sample plante si k > len, donc on prend le min
+            chosen = random.sample(valid_targets, min(nb, len(valid_targets)))
+            on_selection_complete(chosen)
+            
+        elif select_method in ["CHOICE_USER", "CHOICE_OPP"]:
+            chooser = owner if select_method == "CHOICE_USER" else opponent
+            self.game.ask_for_selection(valid_targets, effect.type, count, chooser, on_selection_complete)
+            
+        else:
+            # Fallback par défaut (ex: select="NONE" ou malformé)
+            on_selection_complete(valid_targets)
+
+    def _dispatch_verb(self, effect, target, source, owner, opp):
+        """Délègue l'exécution à la classe d'action appropriée."""
+        action_handler = self._actions.get(effect.type)
+        if action_handler:
+            try:
+                action_handler.execute(target, effect.params, source, owner, opp)
+            except Exception as e:
+                log_error(f"Erreur exécution action {effect.type}: {e}")
+        else:
+            log_error(f"⚠️ Action non gérée : {effect.type}")
+
     # =========================================================================
-    #  HELPERS DE CIBLAGE ET FILTRAGE (Indispensables pour les Auras)
+    #  HELPERS DE CIBLAGE ET FILTRAGE
     # =========================================================================
 
     def _get_candidates(self, effect: CardEffect, source: Card, owner: Player, opp: Player) -> List[Any]:
@@ -77,10 +122,8 @@ class EffectManager:
         group = target_conf.get("group", "NONE")
         zone = target_conf.get("zone", "BOARD")
 
-        if group == "OWNER": return [owner] if effect.params.get("stat") == "HP" else self._get_zone_content(owner,
-                                                                                                             zone).copy()
-        if group == "OPPONENT": return [opp] if effect.params.get("stat") == "HP" else self._get_zone_content(opp,
-                                                                                                              zone).copy()
+        if group == "OWNER": return [owner] if effect.params.get("stat") == "HP" else self._get_zone_content(owner, zone).copy()
+        if group == "OPPONENT": return [opp] if effect.params.get("stat") == "HP" else self._get_zone_content(opp, zone).copy()
         if group == "SELF": return [source]
 
         collection = []
@@ -92,6 +135,9 @@ class EffectManager:
             collection = self._get_zone_content(opp, zone).copy()
         elif group == "ANY":
             collection = self._get_zone_content(owner, zone).copy() + self._get_zone_content(opp, zone).copy()
+        elif group == "BLOCKER":
+             # Cas particulier géré en amont ou via contexte, ici simplifié
+             pass
 
         return collection
 
@@ -103,6 +149,8 @@ class EffectManager:
     def _check_global_conditions(self, condition: Dict, owner: Player, opp: Player) -> bool:
         if not condition: return True
         ctx = condition.get("context")
+        if not ctx: return True
+        
         if ctx == "MY_TURN": return self.game.state.active_player == owner
         if ctx == "IS_ALONE": return len(owner.board) == 1
         if ctx == "FEWER_ALLIES": return len(owner.board) < len(opp.board)
@@ -120,7 +168,11 @@ class EffectManager:
             if isinstance(c, Player):
                 valid.append(c)
                 continue
-            check_val = c.power if stat == "POWER" else 0
+            
+            # Check sur Card
+            check_val = 0
+            if stat == "POWER": check_val = c.power
+            
             if self._compare(check_val, op, val):
                 valid.append(c)
         return valid
@@ -132,3 +184,12 @@ class EffectManager:
         if op == "GT": return a > b
         if op == "LT": return a < b
         return False
+    
+    def _get_owner(self, card_or_player):
+        """Helper utilitaire pour récupérer le propriétaire d'une carte."""
+        if isinstance(card_or_player, Player): return card_or_player
+        p1 = self.state.player1
+        # On vérifie toutes les zones
+        if card_or_player in p1.hand + p1.board + p1.discard:
+            return p1
+        return self.state.player2
