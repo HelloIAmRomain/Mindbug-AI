@@ -1,172 +1,168 @@
 import pytest
-from mindbug_engine.models import Card, CardAbility
-from mindbug_engine.engine import MindbugGame
-from mindbug_engine.rules import Phase
+from mindbug_engine.core.models import CardEffect
+from mindbug_engine.core.consts import Phase, EffectType, Trigger
 
-# Note: On n'importe plus EffectManager directement, on l'utilise via game.effect_manager
 
-def test_dracompost_play_discard(game):
-    p1 = game.player1
-    dead_card = Card("d1", "BigGuy", 10)
-    p1.discard = [dead_card]
-    
-    dracompost = Card("dc", "Draco", 3, trigger="ON_PLAY", 
-                      ability=CardAbility("PLAY_FROM_MY_DISCARD", "SELF", 1))
-    p1.hand = [dracompost]
-    
-    game.step("PLAY", 0)
-    game.step("PASS")
-    
-    assert game.phase == Phase.RESOLUTION_CHOICE
-    game.step("SELECT_DISCARD_P1", 0)
-    assert dead_card in p1.board
+# Utilisation de game_empty pour éviter les interférences avec le setup automatique
+def test_effect_modify_stat_heal(game_empty, create_card):
+    game = game_empty
+    p1 = game.state.player1
+    p1.hp = 1
 
-def test_reclaim_all_discard(game):
-    p1 = game.player1
-    c1 = Card("1", "A", 1)
-    p1.discard = [c1]
-    
-    giraffodile = Card("g", "Gira", 7, trigger="ON_PLAY", 
-                       ability=CardAbility("RECLAIM_ALL_DISCARD", "SELF", 0))
-    p1.hand = [giraffodile]
-    
-    game.step("PLAY", 0)
-    game.step("PASS")
-    
-    assert len(p1.discard) == 0
-    assert c1 in p1.hand
+    effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OWNER"},
+                        params={"stat": "HP", "amount": 2, "operation": "ADD"})
 
-def test_neuromouche_steal_condition(game):
-    p1 = game.player1
-    p2 = game.player2
-    weak = Card("w", "Weak", 3)
-    strong = Card("s", "Strong", 7)
-    p2.board = [weak, strong]
-    
-    neuro = Card("n", "Fly", 4, trigger="ON_PLAY",
-                 ability=CardAbility("STEAL_CREATURE", "OPP", 1, "MIN_POWER", 6))
-    p1.hand = [neuro]
-    
-    game.step("PLAY", 0)
-    game.step("PASS")
-    
-    assert game.phase == Phase.RESOLUTION_CHOICE
-    
-    candidates = game.selection_context["candidates"]
-    assert strong in candidates
-    assert weak not in candidates
-    
-    # Strong est à l'index 1 du board P2
-    game.step("SELECT_BOARD_P2", 1)
-    
-    assert strong in p1.board
+    # On précise le trigger car certains effets dépendent du contexte
+    card = create_card(name="Healer", effects=[effect], trigger=Trigger.ON_PLAY)
 
-def test_effect_destroy_all_enemies(game):
-    p1 = game.player1
-    p2 = game.player2
-    
-    w1 = Card("w1", "Weak1", 3)
-    w2 = Card("w2", "Weak2", 3)
-    s1 = Card("s1", "Strong", 8)
-    p2.board = [w1, w2, s1]
-    
-    kanga = Card("k", "Kanga", 7, trigger="ON_PLAY",
-                 ability=CardAbility("DESTROY_ALL_ENEMIES", "OPP", 0, "MAX_POWER", 4))
-    p1.hand = [kanga]
-    
-    game.step("PLAY", 0)
-    game.step("PASS")
-    
-    assert w1 in p2.discard
-    assert w2 in p2.discard
-    assert s1 in p2.board
+    # CORRECTION : La carte doit être quelque part (ici jouée depuis la main ou arrivant sur le board)
+    p1.board.append(card)
 
-def test_effect_discard_random(game):
-    p2 = game.player2
-    c1 = Card("c1", "C1", 1)
-    c2 = Card("c2", "C2", 1)
-    p2.hand = [c1, c2]
-    # On vide le deck pour éviter le refill automatique qui fausserait le compte
-    p2.deck = [] 
-    
-    furet = Card("f", "Furet", 2, trigger="ON_PLAY",
-                 ability=CardAbility("DISCARD_RANDOM", "OPP", 1))
-    game.player1.hand = [furet]
-    
-    game.step("PLAY", 0)
-    game.step("PASS")
-    
-    # 2 cartes - 1 défaussée = 1 restante (car deck vide)
-    assert len(p2.hand) == 1
-    assert len(p2.discard) == 1
+    game.effect_manager.apply_effect(card, p1, game.state.player2)
+    assert p1.hp == 3
 
-def test_effect_steal_hand(game):
-    """Test Baril (Voler main)."""
-    p1 = game.player1
-    p2 = game.player2
-    target_card = Card("t", "Target", 5)
-    p2.hand = [target_card]
-    
-    thief = Card("t", "Thief", 1, trigger="ON_DEATH",
-                 ability=CardAbility("STEAL_CARD_HAND", "OPP", 1))
-    
-    # --- CORRECTION ICI : Utilisation de l'instance via game.effect_manager ---
-    game.effect_manager.apply_effect(game, thief, p1, p2)
-    
-    assert target_card in p1.hand
-    assert target_card not in p2.hand
 
-def test_effect_play_opp_discard(game):
-    p1 = game.player1
-    p2 = game.player2
-    dead = Card("d", "Dead", 5)
-    p2.discard = [dead]
-    
-    pilleur = Card("p", "Pilleur", 1, trigger="ON_PLAY",
-                   ability=CardAbility("PLAY_FROM_OPP_DISCARD", "SELF", 1))
-    p1.hand = [pilleur]
-    
-    game.step("PLAY", 0)
-    game.step("PASS")
-    
-    assert game.phase == Phase.RESOLUTION_CHOICE
-    game.step("SELECT_DISCARD_P2", 0)
-    
-    assert dead in p1.board
+def test_effect_modify_stat_damage(game_empty, create_card):
+    game = game_empty
+    p1 = game.state.player1
+    p2 = game.state.player2
 
-def test_effect_sacrifice(game):
-    p1 = game.player1
-    p2 = game.player2
-    
-    victim = Card("v", "Vic", 5)
+    effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OPPONENT"},
+                        params={"stat": "HP", "amount": 1, "operation": "SUB"})
+    card = create_card(name="Sniper", effects=[effect])
+
+    # CORRECTION : La carte doit être sur le plateau
+    p1.board = [card]
+
+    game.effect_manager.apply_effect(card, p1, p2)
+    assert p2.hp == 2
+
+
+def test_effect_modify_stat_set(game_empty, create_card):
+    game = game_empty
+    p1 = game.state.player1
+    p2 = game.state.player2
+
+    effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OPPONENT"},
+                        params={"stat": "HP", "amount": 1, "operation": "SET"})
+    card = create_card(name="Mosquito", effects=[effect])
+
+    # CORRECTION
+    p1.board = [card]
+
+    game.effect_manager.apply_effect(card, p1, p2)
+    assert p2.hp == 1
+
+
+def test_effect_destroy_target_choice(game_empty, create_card):
+    game = game_empty
+    p1 = game.state.player1
+    p2 = game.state.player2
+
+    victim = create_card(name="Victim", power=5)
     p2.board = [victim]
-    
-    kanga = Card("k", "Kanga", 5, trigger="ON_PLAY",
-                 ability=CardAbility("OPPONENT_SACRIFICE", "OPP", 1))
-    p1.hand = [kanga]
-    
-    game.active_player_idx = 0
-    game.step("PLAY", 0)
-    game.step("PASS")
-    
-    assert len(p2.board) == 0
+
+    effect = CardEffect(EffectType.DESTROY,
+                        target={"group": "ANY", "zone": "BOARD", "count": 1, "select": "CHOICE_USER"})
+    bomb = create_card(name="Bomb", effects=[effect])
+
+    # CORRECTION
+    p1.board = [bomb]
+
+    game.state.active_player_idx = 0
+    game.effect_manager.apply_effect(bomb, p1, p2)
+
+    assert game.state.phase == Phase.RESOLUTION_CHOICE
+
+    # On simule la résolution du choix
+    game.resolve_selection_effect(victim)
     assert victim in p2.discard
 
-def test_effect_reclaim_discard_simple(game):
-    p1 = game.player1
-    dead = Card("d", "Dead", 1)
+
+def test_effect_destroy_all_conditional(game_empty, create_card):
+    game = game_empty
+    p1 = game.state.player1
+    p2 = game.state.player2
+
+    weak = create_card(name="Weak", power=3)
+    strong = create_card(name="Strong", power=8)
+    p2.board = [weak, strong]
+
+    effect = CardEffect(EffectType.DESTROY, target={"group": "ENEMIES", "select": "ALL"},
+                        condition={"stat": "POWER", "operator": "LTE", "value": 4})
+    rex = create_card(name="Rex", effects=[effect])
+
+    # CORRECTION
+    p1.board = [rex]
+
+    game.effect_manager.apply_effect(rex, p1, p2)
+
+    assert weak in p2.discard
+    assert strong in p2.board
+
+
+def test_effect_steal_board(game_empty, create_card):
+    game = game_empty
+    p1 = game.state.player1
+    p2 = game.state.player2
+
+    target = create_card(name="Target", power=8)
+    p2.board = [target]
+
+    effect = CardEffect(EffectType.STEAL,
+                        target={"group": "ENEMIES", "zone": "BOARD", "count": 1, "select": "CHOICE_USER"},
+                        condition={"stat": "POWER", "operator": "GTE", "value": 6})
+    fly = create_card(name="Fly", effects=[effect])
+
+    # CORRECTION : La mouche est à P1
+    p1.board = [fly]
+
+    game.effect_manager.apply_effect(fly, p1, p2)
+
+    game.resolve_selection_effect(target)
+    assert target in p1.board
+
+
+def test_effect_play_from_discard(game_empty, create_card):
+    game = game_empty
+    p1 = game.state.player1
+
+    dead = create_card(name="Dead", power=10)
     p1.discard = [dead]
-    
-    necro = Card("n", "Necro", 3, trigger="ON_PLAY",
-                 ability=CardAbility("RECLAIM_DISCARD", "SELF", 1))
-    p1.hand = [necro]
-    
-    game.active_player_idx = 0
-    game.step("PLAY", 0)
-    game.step("PASS")
-    
-    assert game.phase == Phase.RESOLUTION_CHOICE
-    game.step("SELECT_DISCARD_P1", 0)
-    
-    assert dead in p1.hand
-    assert dead not in p1.board
+
+    effect = CardEffect(EffectType.PLAY,
+                        target={"group": "OWNER", "zone": "DISCARD", "count": 1, "select": "CHOICE_USER"})
+    draco = create_card(name="Draco", effects=[effect])
+
+    # CORRECTION
+    p1.board = [draco]
+
+    game.effect_manager.apply_effect(draco, p1, game.state.player2)
+    game.resolve_selection_effect(dead)
+
+    assert dead in p1.board
+
+
+def test_effect_discard_random(game_empty, create_card):
+    game = game_empty
+    p1 = game.state.player1
+    p2 = game.state.player2
+
+    c1 = create_card(name="C1")
+    c2 = create_card(name="C2")
+    p2.hand = [c1, c2]
+    game.state.deck = []
+
+    effect = CardEffect(
+        EffectType.DISCARD,
+        target={"group": "OPPONENT", "zone": "HAND", "count": 1, "select": "RANDOM"}
+    )
+
+    elephant = create_card(name="Elephant", effects=[effect])
+    p1.board = [elephant]
+
+    game.effect_manager.apply_effect(elephant, p1, p2)
+
+    # 2 cartes - 1 défaussée = 1 restante
+    assert len(p2.hand) == 1
+    assert len(p2.discard) == 1

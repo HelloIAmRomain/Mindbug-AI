@@ -1,135 +1,108 @@
 import pygame
-from constants import *
-from ..ui_elements import Button
+from mindbug_gui.screens.base_screen import BaseScreen
+from mindbug_gui.widgets.buttons import Button
 
-class MenuScreen:
-    """Écran principal du jeu : Jouer (IA/Local), Options, Quitter."""
-    
-    def __init__(self, screen, config, res_manager):
-        self.screen = screen
-        self.config = config
-        self.res_manager = res_manager
-        
-        # Dimensions
-        self.w, self.h = screen.get_size()
-        
-        # Polices (Attention à l'ordre : taille, style)
-        self.font_title = self.res_manager.get_font(80, "title")
-        self.font_btn = self.res_manager.get_font(32, "bold")
-        
-        self.buttons = []
+# Imports propres depuis le core
+from mindbug_gui.core.colors import (
+    BG_COLOR, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT,
+    BTN_PLAY, BTN_PVP, BTN_SETTINGS, BTN_QUIT, BTN_HOVER
+)
+
+
+class MenuScreen(BaseScreen):
+    def __init__(self, app):
+        super().__init__(app)
+        self.res = app.res_manager
+        self.widgets = []
+        self._init_ui()
+
+    def on_resize(self, w, h):
+        super().on_resize(w, h)
         self._init_ui()
 
     def _init_ui(self):
-        cx = self.w // 2
-        cy = self.h // 2
-        
-        btn_w = 300
-        btn_h = 60
-        gap = 20
-        
-        # 1. BOUTON JOUER VS IA (Le nouveau mode principal)
-        # On utilise COLOR_ACCENT (Bleu/Cyan) pour le mettre en valeur
-        btn_pve = Button(
-            rect=pygame.Rect(cx - btn_w//2, cy - 80, btn_w, btn_h),
-            text="JOUER VS IA",
-            font=self.font_btn,
-            bg_color=COLOR_ACCENT, 
-            text_color=COLOR_WHITE,
-            hover_color=COLOR_HOVER,
-            action="PLAY_PVE"
-        )
-        self.buttons.append(btn_pve)
+        self.widgets.clear()
 
-        # 2. BOUTON PvP LOCAL (HOTSEAT)
-        btn_hotseat = Button(
-            rect=pygame.Rect(cx - btn_w//2, cy, btn_w, btn_h),
-            text="PvP (LOCAL)",
-            font=self.font_btn,
-            bg_color=COLOR_BTN_PLAY,
-            text_color=COLOR_WHITE,
-            hover_color=COLOR_HOVER,
-            action="PLAY_HOTSEAT"
-        )
-        self.buttons.append(btn_hotseat)
+        cx = self.width // 2
+        cy = self.height // 2
 
-        # 3. BOUTON PARAMÈTRES
-        btn_settings = Button(
-            rect=pygame.Rect(cx - btn_w//2, cy + 80, btn_w, btn_h),
+        # --- TITRE & SOUS-TITRE ---
+        font_title = self.res.get_font(80, bold=True)
+        font_sub = self.res.get_font(30, bold=True)
+
+        self.title_surf = font_title.render("MINDBUG", True, TEXT_PRIMARY)
+        self.title_rect = self.title_surf.get_rect(center=(cx, cy - 180))
+
+        self.subtitle_surf = font_sub.render("ONLINE", True, ACCENT)
+        self.subtitle_rect = self.subtitle_surf.get_rect(center=(cx, cy - 120))
+
+        # --- BOUTONS ---
+        font_btn = self.res.get_font(24, bold=True)
+        w_btn, h_btn = 320, 55
+        spacing = 25
+        start_y = cy - 40
+
+        # 1. PvE
+        self.widgets.append(Button(
+            x=cx - w_btn // 2, y=start_y,
+            width=w_btn, height=h_btn,
+            text="JOUER SOLO (VS IA)",
+            font=font_btn,
+            action="START_PVE",  # Action explicite
+            bg_color=BTN_PLAY, hover_color=BTN_HOVER
+        ))
+
+        # 2. PvP (Local)
+        self.widgets.append(Button(
+            x=cx - w_btn // 2, y=start_y + h_btn + spacing,
+            width=w_btn, height=h_btn,
+            text="JOUER À DEUX (LOCAL)",
+            font=font_btn,
+            action="START_PVP",  # Action explicite
+            bg_color=BTN_PVP, hover_color=BTN_HOVER
+        ))
+
+        # 3. Settings
+        self.widgets.append(Button(
+            x=cx - w_btn // 2, y=start_y + (h_btn + spacing) * 2,
+            width=w_btn, height=h_btn,
             text="PARAMÈTRES",
-            font=self.font_btn,
-            bg_color=COLOR_BTN_NORMAL,
-            text_color=COLOR_WHITE,
-            hover_color=COLOR_HOVER,
-            action="SETTINGS"
-        )
-        self.buttons.append(btn_settings)
-        
-        # 4. BOUTON QUITTER
-        btn_quit = Button(
-            rect=pygame.Rect(cx - btn_w//2, cy + 160, btn_w, btn_h),
+            font=font_btn,
+            action="GOTO_SETTINGS",
+            bg_color=BTN_SETTINGS, hover_color=BTN_HOVER
+        ))
+
+        # 4. Quit
+        self.widgets.append(Button(
+            x=cx - w_btn // 2, y=start_y + (h_btn + spacing) * 3,
+            width=w_btn, height=h_btn,
             text="QUITTER",
-            font=self.font_btn,
-            bg_color=COLOR_BTN_QUIT,
-            text_color=COLOR_WHITE,
-            hover_color=(255, 100, 100),
-            action="QUIT"
-        )
-        self.buttons.append(btn_quit)
+            font=font_btn,
+            action="QUIT_APP",
+            bg_color=BTN_QUIT, hover_color=BTN_HOVER
+        ))
 
-    def run(self):
-        running = True
-        while running:
-            # Events
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return "QUIT"
-                
-                # Clics
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:
-                        res = self._handle_click(event.pos)
-                        if res: return res
-            
-            # Draw
-            self._draw()
-            pygame.display.flip()
-            
-        return "QUIT"
-
-    def _handle_click(self, pos):
-        """Détecte quel bouton est cliqué et configure le mode de jeu."""
-        for btn in self.buttons:
-            if btn.is_hovered(pos):
-                
-                if btn.action == "PLAY_PVE":
-                    self.config.game_mode = "PVE" # <--- IMPORTANT
-                    return "PLAY"
-                
-                elif btn.action == "PLAY_HOTSEAT":
-                    self.config.game_mode = "HOTSEAT" # <--- IMPORTANT
-                    return "PLAY"
-
-                return btn.action 
+    def handle_events(self, events):
+        for event in events:
+            for widget in self.widgets:
+                action = widget.handle_event(event)
+                if action:
+                    return action  # On remonte l'action brute au contrôleur
         return None
 
-    def _draw(self):
-        # Fond sombre (cohérent avec settings)
-        self.screen.fill((30, 30, 40))
-        
-        w, h = self.screen.get_size()
-        
-        # Titre
-        title_surf = self.font_title.render("MINDBUG AI", True, COLOR_WHITE)
-        title_rect = title_surf.get_rect(center=(w // 2, h * 0.15))
-        self.screen.blit(title_surf, title_rect)
-        
-        # Boutons
+    def update(self, dt):
         mouse_pos = pygame.mouse.get_pos()
-        for btn in self.buttons:
-            btn.draw(self.screen, mouse_pos)
-        
+        for w in self.widgets:
+            w.update(dt, mouse_pos)
+
+    def draw(self, surface):
+        surface.fill(BG_COLOR)
+        surface.blit(self.title_surf, self.title_rect)
+        surface.blit(self.subtitle_surf, self.subtitle_rect)
+
+        for w in self.widgets:
+            w.draw(surface)
+
         # Version
-        font_small = self.res_manager.get_font(16, "body")
-        ver_surf = font_small.render("v1.5.0", True, (100, 100, 100))
-        self.screen.blit(ver_surf, (10, h - 30))
+        ver = self.res.get_font(16).render("v3.1 - Stable", True, TEXT_SECONDARY)
+        surface.blit(ver, (15, self.height - 25))

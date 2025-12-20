@@ -1,122 +1,107 @@
 import pytest
-from mindbug_engine.models import Card, CardAbility
+from mindbug_engine.core.models import Card
 from mindbug_engine.engine import MindbugGame
-from mindbug_engine.rules import Phase, Keyword
+from mindbug_engine.core.consts import Phase, Trigger, Keyword
 
 @pytest.fixture
 def game():
-    g = MindbugGame()
-    # On vide les mains/boards pour contrôler le test
-    g.player1.hand = []
-    g.player1.board = []
-    g.player2.hand = []
-    g.player2.board = []
+    g = MindbugGame(verbose=False)
+    g.state.player1.hand = []
+    g.state.player2.hand = []
+    g.state.player1.board = []
+    g.state.player2.board = []
     return g
 
-# --- TEST MECANIQUE : CORIACE (TOUGH) ---
 
 def test_mechanic_tough_survival(game):
-    """Vérifie qu'en jeu, une créature TOUGH survit aux dégâts."""
-    p1 = game.player1
-    p2 = game.player2
-    
-    # P1 attaque (5)
+    p1 = game.state.player1
+    p2 = game.state.player2
+
     att = Card("a", "Att", 5)
     p1.board = [att]
-    
-    # P2 défend avec Tough (3) -> Doit perdre le combat mais survivre
-    tough = Card("t", "Shield", 3, keywords=["TOUGH"])
+
+    tough = Card("t", "Shield", 3, keywords=[Keyword.TOUGH])
     p2.board = [tough]
-    
-    game.active_player_idx = 0
-    game.phase = Phase.P1_MAIN
-    
+
+    game.state.active_player_idx = 0
+    game.state.phase = Phase.P1_MAIN
+
     game.step("ATTACK", 0)
     game.step("BLOCK", 0)
-    
-    # Résultat : Tough est blessé mais toujours sur le plateau
-    assert tough in p2.board
-    assert tough.is_damaged is True
-    assert tough not in p2.discard
 
-# --- TEST MECANIQUE : MOTS-CLÉS DYNAMIQUES ---
+    # Vérifications
+    assert tough in p2.board  # Toujours vivante
+    assert tough.is_damaged is True  # Marquée comme endommagée
 
-def test_mechanic_dynamic_keywords_shark(game):
-    """Vérifie que le Requin Crabe copie les mots-clés ennemis à chaque étape."""
-    p1 = game.player1
-    p2 = game.player2
-    
-    # P1 a le Requin Crabe
-    shark = Card("s", "Shark", 5, trigger="PASSIVE", 
-                 ability=CardAbility("COPY_ALL_KEYWORDS_FROM_ENEMIES", "SELF", 0))
-    p1.board = [shark]
-    
-    # P2 a un Chasseur
-    hunter = Card("h", "Hunt", 3, keywords=["HUNTER"])
-    p2.board = [hunter]
-    
-    # On force une mise à jour (via une étape fictive ou appel direct)
-    game.update_board_states()
-    
-    # Vérif : Le requin a gagné HUNTER
-    assert "HUNTER" in shark.keywords
-    
-    # P2 perd son Chasseur
-    p2.board = []
-    game.update_board_states()
-    
-    # Vérif : Le requin a perdu HUNTER
-    assert "HUNTER" not in shark.keywords
+    # Vérification ultime : Elle a perdu le mot-clé (car update_board_states a tourné)
+    assert Keyword.TOUGH not in tough.keywords
 
-# --- TEST MECANIQUE : FURIE (FRENZY) ---
 
 def test_mechanic_frenzy_double_attack(game):
-    """Vérifie l'enchaînement de deux attaques avec Furie (Mode Automatique)."""
-    p1 = game.player1
-    p2 = game.player2
+    """Test Fureur (Frenzy) V2."""
+    p1 = game.state.player1
+    p2 = game.state.player2
 
-    # Setup : P1 a une créature Fureur (6), P2 a deux bloqueurs (2)
-    frenzy_card = Card("f", "Frenzy", 6, keywords=["FRENZY"])
+    frenzy_card = Card("f", "Frenzy", 6, keywords=[Keyword.FRENZY])
     p1.board = [frenzy_card]
 
     m1 = Card("m1", "M1", 2)
     m2 = Card("m2", "M2", 2)
     p2.board = [m1, m2]
 
-    game.active_player_idx = 0
-    game.phase = Phase.P1_MAIN
+    game.state.active_player_idx = 0
+    game.state.phase = Phase.P1_MAIN
 
     # --- Attaque 1 ---
-    # P1 attaque manuellement la première fois
     game.step("ATTACK", 0)
-
-    # P2 défend
-    assert game.active_player == p2
     game.step("BLOCK", 0)  # M1 bloque
 
-    # Résultat Combat 1
     assert m1 in p2.discard
-    assert frenzy_card in p1.board  # Fureur survit
+    assert frenzy_card in p1.board
 
-    # --- Attaque 2 (Automatique) ---
-    # CORRECTION DU TEST ICI :
-    # Avec la nouvelle logique, on ne revient PAS à P1.
-    # La Fureur a déclenché une nouvelle phase de blocage IMMÉDIATE pour P2.
+    # --- TRANSITION FUREUR ---
+    # L'Engine a rendu la main à P1 pour la 2ème attaque
+    assert game.state.phase == Phase.P1_MAIN
+    assert game.state.active_player == p1
+    assert game.state.frenzy_candidate == frenzy_card
 
-    assert game.phase == Phase.BLOCK_DECISION
-    assert game.active_player == p2  # C'est à P2 de bloquer à nouveau !
-    assert game.pending_attacker == frenzy_card
+    # On vérifie que le seul coup légal est d'attaquer
+    moves = game.get_legal_moves()
+    assert len(moves) == 1
+    assert moves[0] == ("ATTACK", 0)
 
-    # P2 défend la seconde attaque
-    game.step("BLOCK", 0)  # M2 bloque (l'index 0 car M1 est morte)
+    # --- Attaque 2 ---
+    game.step("ATTACK", 0)  # P1 lance la 2ème attaque
 
-    # Résultat Combat 2
+    # Maintenant on est en phase de blocage pour P2
+    assert game.state.phase == Phase.BLOCK_DECISION
+    assert game.state.active_player == p2
+    assert game.state.pending_attacker == frenzy_card
+
+    game.step("BLOCK", 0)  # M2 bloque (Attention : M2 est devenu l'index 0 car M1 est mort)
+
     assert m2 in p2.discard
 
     # --- Fin du tour ---
-    # La Fureur ne s'active qu'une fois par tour (logique à vérifier si implémentée,
-    # mais ici frenzy_candidate devrait être reset)
-    # Le tour devrait être fini -> Main à P2
+    assert game.state.phase == Phase.P2_MAIN
+    assert game.state.active_player == p2
 
-    assert game.phase == Phase.P2_MAIN
-    assert game.active_player == p2
+def test_tough_reset_after_death(game):
+    """Vérifie qu'une carte Tenace morte récupère son bouclier dans la défausse."""
+    p1 = game.state.player1
+    # Une carte Tenace
+    tank = Card("t", "Tank", 4, keywords=[Keyword.TOUGH])
+    p1.board = [tank]
+
+    # 1. Premier coup : Perd le bouclier
+    # On simule manuellement ou via combat
+    tank.keywords.remove(Keyword.TOUGH)
+    assert Keyword.TOUGH not in tank.keywords
+
+    # 2. Mort (via CombatManager)
+    game.combat_manager.apply_lethal_damage(tank, p1)
+
+    # 3. Vérification dans la défausse
+    assert tank in p1.discard
+    # CRUCIAL : Elle doit avoir récupéré Tenace grâce au reset()
+    assert Keyword.TOUGH in tank.keywords

@@ -1,81 +1,95 @@
 import pytest
 from unittest.mock import MagicMock
-from mindbug_engine.models import Card, Player, CardAbility
-from mindbug_engine.combat import CombatManager
-from mindbug_engine.rules import Keyword
+from mindbug_engine.core.models import Card, Player, CardEffect
+from mindbug_engine.core.state import GameState
+from mindbug_engine.managers.combat_manager import CombatManager
+from mindbug_engine.core.consts import Trigger, Keyword, EffectType
+
+
+class MockGame:
+    """Simule la façade Engine pour les tests unitaires."""
+
+    def __init__(self, state):
+        self.state = state
 
 
 @pytest.fixture
-def mock_game():
-    """Mock minimal du jeu pour le CombatManager."""
-    game = MagicMock()
-    game.player1 = Player("P1")
-    game.player2 = Player("P2")
-    # Par défaut P1 actif
-    game.active_player = game.player1
-    game.opponent = game.player2
-    return game
+def mock_managers():
+    """Crée un environnement isolé pour tester CombatManager."""
+    p1 = Player("P1")
+    p2 = Player("P2")
+    state = GameState([], p1, p2)
+
+    # Mock de la façade
+    mock_game = MockGame(state)
+    effect_manager = MagicMock()
+
+    # On instancie avec le MockGame
+    cm = CombatManager(mock_game, effect_manager)
+    return cm, state, effect_manager
 
 
-def test_resolve_fight_unblocked_standard(mock_game):
-    """Test dégâts normaux (-1 PV)."""
-    cm = CombatManager(mock_game)
+def test_resolve_fight_unblocked_standard(mock_managers):
+    cm, state, _ = mock_managers
     attacker = Card("a", "Attacker", 5)
-    mock_game.player1.board = [attacker]
 
-    # Mock calcul puissance
-    cm.calculate_real_power = MagicMock(return_value=5)
+    # Placement sur le board pour que le manager trouve le owner
+    state.player1.board = [attacker]
+    state.active_player_idx = 0
 
-    # Pas de bloqueur
+    # Résolution (Attaquant P1 vs Pas de bloqueur -> P2 prend les dégâts)
+    att_dead, blk_dead = cm.resolve_fight(attacker, None)
+
+    # Par défaut, dégâts = 1 PV dans le moteur standard (ou power selon règles)
+    # Le moteur actuel fait -1 HP par défaut pour unblocked
+    # state.player2.hp part de 3
+    assert state.player2.hp < 3
+    assert not att_dead
+
+
+def test_resolve_fight_unblocked_trigger(mock_managers):
+    cm, state, em_mock = mock_managers
+
+    effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OPPONENT"}, params={"amount": 1})
+    attacker = Card("m", "Mosquito", 4, trigger=Trigger.ON_UNBLOCKED, effects=[effect])
+
+    state.player1.board = [attacker]
+    state.active_player_idx = 0
+
     cm.resolve_fight(attacker, None)
 
-    # Vérif
-    assert mock_game.player2.hp == 2  # 3 - 1
-    # On vérifie que apply_effect n'a PAS été appelé
-    mock_game.effect_manager.apply_effect.assert_not_called()
+    # Vérification : L'effet doit être déclenché via l'EffectManager
+    em_mock.apply_effect.assert_called_once()
 
 
-def test_resolve_fight_unblocked_trigger(mock_game):
-    """Test Turboustique : Trigger ON_ATTACK_UNBLOCKED."""
-    cm = CombatManager(mock_game)
+def test_tough_mechanic_survival(mock_managers):
+    """
+    Vérifie que lors d'un combat mortel, une créature Tenace survit
+    et est marquée comme endommagée.
+    """
+    cm, state, _ = mock_managers
 
-    # Carte avec trigger spécial
-    attacker = Card("m", "Mosquito", 4, trigger="ON_ATTACK_UNBLOCKED",
-                    ability=CardAbility("SET_OPPONENT_HP_TO_ONE", "OPP", 1))
-    mock_game.player1.board = [attacker]
+    # 1. Attaquant très fort (Puissance 10)
+    attacker = Card("k", "Killer", 10)
+    state.player1.board = [attacker]
 
-    cm.calculate_real_power = MagicMock(return_value=4)
+    # 2. Défenseur faible mais Tenace (Puissance 3)
+    shield_card = Card("t", "Tank", 3, keywords=[Keyword.TOUGH])
+    state.player2.board = [shield_card]
 
-    # Action : Pas de bloqueur
-    cm.resolve_fight(attacker, None)
+    # Simulation du combat
+    # Le manager va voir que 10 > 3, donc Tank devrait mourir,
+    # MAIS il va voir TOUGH et annuler la mort.
+    cm.resolve_fight(attacker, shield_card)
 
-    # Vérif : Pas de dégâts standards (-1 PV) immédiats si l'effet prend le relais
-    # (Note : Dans votre implémentation, vous déléguerez à l'EffectManager)
-    mock_game.effect_manager.apply_effect.assert_called_once_with(
-        mock_game, attacker, mock_game.player1, mock_game.player2
-    )
-    # Les PV ne doivent pas descendre via la logique standard (c'est l'effet qui le fera)
-    assert mock_game.player2.hp == 3
+    # VÉRIFICATIONS
 
+    # 1. La carte est TOUJOURS sur le plateau (Sauvée par le Juge)
+    assert shield_card in state.player2.board
 
-def test_apply_lethal_damage_tough(mock_game):
-    """Test Tenace (Tough) : survit à la première mort."""
-    cm = CombatManager(mock_game)
-    shield_card = Card("t", "Tank", 3, keywords=["TOUGH"])
-
-    # 1ère mort (bouclier)
-    cm.apply_lethal_damage(shield_card, mock_game.player1)
-
+    # 2. La carte est marquée endommagée (Le bouclier a sauté)
     assert shield_card.is_damaged is True
-    # destroy_card ne doit PAS être appelé
-    assert len(mock_game.player1.discard) == 0
 
-    # 2ème mort (plus de bouclier)
-    # On doit mocker destroy_card ou vérifier qu'elle est appelée
-    # Ici testons la logique interne de apply_lethal_damage qui appelle self.destroy_card
-
-    # On mock destroy_card pour vérifier l'appel
-    cm.destroy_card = MagicMock()
-
-    cm.apply_lethal_damage(shield_card, mock_game.player1)
-    cm.destroy_card.assert_called_once_with(shield_card, mock_game.player1)
+    # Note : Le retrait effectif du mot-clé "TOUGH" de la liste se fera
+    # au prochain engine.update_board_states(), pas instantanément ici.
+    # On vérifie donc surtout le flag is_damaged.

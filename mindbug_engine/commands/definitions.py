@@ -1,0 +1,222 @@
+from dataclasses import dataclass
+from typing import Any
+from mindbug_engine.commands.command import Command
+from mindbug_engine.core.consts import Phase, Trigger, Keyword
+from mindbug_engine.utils.logger import log_info, log_error
+
+
+class PlayCardCommand(Command):
+    """
+    Joue une carte de la main.
+    Initie la phase de Mindbug.
+    """
+
+    def __init__(self, card_index: int):
+        self.card_index = card_index
+
+    def execute(self, game):
+        player = game.state.active_player
+
+        # Validation
+        if not (0 <= self.card_index < len(player.hand)):
+            log_error(f"❌ Invalid card index: {self.card_index}")
+            return
+
+        # 1. On retire la carte
+        card = player.hand.pop(self.card_index)
+        game.state.pending_card = card
+
+        log_info(f"> {player.name} plays {card.name}. Mindbug check...")
+
+        # Reset états
+        game.state.frenzy_candidate = None
+
+        # 2. Transition Mindbug
+        if game.state.opponent.mindbugs > 0:
+            # Cas normal : On donne la main à l'adversaire pour qu'il décide
+            game.turn_manager.switch_active_player()
+            game.state.phase = Phase.MINDBUG_DECISION
+        else:
+            # Cas "Auto-Pass" (0 Mindbugs restants)
+
+            # Pour utiliser PassCommand, il faut que le jeu soit dans l'état
+            # "C'est à l'adversaire de décider".
+            # On switch donc manuellement vers l'adversaire.
+            game.turn_manager.switch_active_player()
+
+            # Maintenant Active Player = Opponent.
+            # On force le Pass (comme s'il avait cliqué "Decliner").
+            pass_cmd = PassCommand()
+            pass_cmd.execute(game)
+
+@dataclass
+class AttackCommand(Command):
+    """
+    Déclare une attaque avec une créature.
+    Gère les triggers ON_ATTACK et le mot-clé HUNTER.
+    """
+    attacker_index: int
+
+    def execute(self, game):
+        ap = game.state.active_player
+
+        # Calcul dynamique de l'adversaire (P1 vs P2)
+        opp = game.state.player2 if ap == game.state.player1 else game.state.player1
+
+        # 1. Validation
+        if not (0 <= self.attacker_index < len(ap.board)):
+            log_error(f"❌ Invalid attacker index {self.attacker_index}")
+            return
+
+        attacker = ap.board[self.attacker_index]
+        game.state.pending_attacker = attacker
+
+        log_info(f"> ⚔️ {ap.name} declares attack with {attacker.name} !")
+
+        # 2. Trigger ON_ATTACK (Immédiat)
+        # Se déclenche avant que l'adversaire ne puisse réagir
+        if attacker.trigger == Trigger.ON_ATTACK:
+            log_info(f"⚡ Trigger ON_ATTACK activated for {attacker.name}")
+            game.effect_manager.apply_effect(attacker, ap, opp)
+
+            # Note : Si cet effet déclenche une sélection (ex: Détruire une cible),
+            # la phase passera à RESOLUTION_CHOICE et le tour sera "suspendu" ici.
+            # La suite (Blocage) devra être gérée par la reprise du flux (Resume Flow).
+            if game.state.phase == Phase.RESOLUTION_CHOICE:
+                return
+
+        # 3. Gestion HUNTER (Chasseur)
+        # Si Chasseur : L'attaquant choisit la créature adverse qui DOIT bloquer.
+        has_targets = len(opp.board) > 0
+        if Keyword.HUNTER in attacker.keywords and has_targets:
+            log_info(f"> 🏹 HUNTER triggers : {ap.name} chooses the blocker.")
+
+            # Callback : Ce qui se passe quand le joueur a cliqué sur la victime
+            def on_hunter_target_selected(selection):
+                victim = selection[0]
+                log_info(f"   -> Hunter targeted {victim.name}")
+                # Résolution immédiate du combat (Pas de phase de décision pour l'adversaire)
+                game.resolve_combat(blocker=victim)
+
+            # Appel à l'API de sélection
+            game.ask_for_selection(
+                candidates=opp.board,
+                reason="HUNTER_TARGET",
+                count=1,
+                selector=ap,  # C'est l'attaquant qui choisit !
+                callback=on_hunter_target_selected
+            )
+            return  # On stop ici, on attend le choix du joueur
+
+        # 4. Transition standard (Pas de Chasseur ou pas de cibles)
+        # On passe la main au défenseur pour qu'il choisisse de bloquer ou non.
+        game.state.phase = Phase.BLOCK_DECISION
+        game.turn_manager.switch_active_player()
+
+
+class BlockCommand(Command):
+    """
+    Déclare un bloqueur en réponse à une attaque.
+    """
+
+    def __init__(self, blocker_index: int):
+        self.blocker_index = blocker_index
+
+    def execute(self, game):
+        player = game.state.active_player
+
+        if not (0 <= self.blocker_index < len(player.board)):
+            log_error(f"❌ Invalid blocker index {self.blocker_index}")
+            return
+
+        blocker = player.board[self.blocker_index]
+        log_info(f"> {player.name} blocks with {blocker.name}.")
+
+        # Délégation au moteur de combat
+        game.resolve_combat(blocker)
+
+
+class NoBlockCommand(Command):
+    """
+    Refuse de bloquer (encaisse les dégâts).
+    """
+
+    def execute(self, game):
+        log_info(f"> {game.state.active_player.name} decides not to block.")
+        # Combat contre "Rien" (Attaque directe)
+        game.resolve_combat(None)
+
+
+class MindbugCommand(Command):
+    """
+    Utilise un Mindbug pour voler la carte jouée.
+    """
+
+    def execute(self, game):
+        thief = game.state.active_player  # C'est celui qui joue le Mindbug (donc l'adversaire de celui qui a posé)
+
+        if thief.mindbugs > 0 and game.state.pending_card:
+            thief.mindbugs -= 1
+            card = game.state.pending_card
+
+            log_info(f"> MINDBUG ! {thief.name} steals {card.name} !")
+
+            # 1. Le voleur pose la carte chez lui (Trigger ON_PLAY activés pour le voleur)
+            game.put_card_on_board(thief, card)
+            game.state.pending_card = None
+
+            # 2. Gestion du "Replay" (Le joueur initial rejoue un tour complet)
+            # Si on est bloqué dans une sélection (ex: Trigger OnPlay du voleur demande une cible)
+            if game.state.phase == Phase.RESOLUTION_CHOICE:
+                log_info("   -> Turn end suspended pending selection...")
+                # On marque qu'un replay doit avoir lieu après la sélection
+                game.state.mindbug_replay_pending = True
+            else:
+                # Sinon on lance le tour bonus immédiatement
+                game.execute_mindbug_replay()
+        else:
+            log_error("❌ Illegal Mindbug attempt")
+
+
+class PassCommand(Command):
+    """
+    Refuse d'utiliser un Mindbug. La carte revient à son propriétaire initial.
+    """
+
+    def execute(self, game):
+        log_info(f"> {game.state.active_player.name} declines Mindbug.")
+
+        # On redonne la main au joueur initial (celui qui a joué la carte)
+        game.turn_manager.switch_active_player()
+
+        original_owner = game.state.active_player
+        card = game.state.pending_card
+
+        if card:
+            # La carte arrive enfin sur le plateau du propriétaire
+            game.put_card_on_board(original_owner, card)
+            game.state.pending_card = None
+
+        # Gestion fin de tour
+        # Si un trigger (ON_PLAY) a demandé une sélection, on ne finit pas le tour
+        if game.state.phase == Phase.RESOLUTION_CHOICE:
+            log_info("   -> Turn end suspended pending selection...")
+            game.state.end_turn_pending = True
+        else:
+            # Sinon, le tour est fini
+            game.turn_manager.end_turn()
+
+
+class ResolveSelectionCommand(Command):
+    """
+    Commande spéciale générée par l'UI quand un joueur clique sur une cible
+    alors que le jeu est en phase RESOLUTION_CHOICE.
+    """
+
+    def __init__(self, selected_object: Any, **kwargs):
+        # La Factory a déjà résolu l'index en objet
+        self.selected_object = selected_object
+
+    def execute(self, game):
+        # On transmet l'objet à l'Engine qui fera le lien avec le QueryManager et gérera la reprise du flux
+        game.resolve_selection_effect(self.selected_object)

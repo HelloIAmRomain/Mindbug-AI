@@ -1,6 +1,6 @@
 from settings import SettingsManager
 from constants import PATH_DATA
-from mindbug_engine.loaders import CardLoader
+from mindbug_engine.infrastructure.card_loader import CardLoader
 
 class GameConfig:
     """
