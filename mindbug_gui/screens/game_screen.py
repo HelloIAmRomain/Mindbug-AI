@@ -245,18 +245,30 @@ class GameScreen(BaseScreen):
                     is_in_hand = (clicked_cv.card in self.game.state.active_player.hand)
 
                     if is_in_hand:
-                        # >>> START DRAG (JOUER UNE CARTE) <<<
+                        # ... (Logique de Drag existante, on ne touche pas) ...
                         self.dragged_card_view = clicked_cv
                         clicked_cv.start_drag(event.pos)
-
-                        # 1. Calcul des zones valides
                         self.valid_drop_zones = self._calculate_valid_drop_zones(clicked_cv.card)
-
-                        # 2. Initier l'effet fantôme (créer un trou dans la main)
                         self._update_zone_ghosts(origin_card=clicked_cv.card, hover_pos=event.pos)
+
                     else:
-                        # >>> CLIC SIMPLE (ATTAQUE, EFFETS) <<<
-                        self._handle_card_events(event)
+                        # >>> CLIC SIMPLE (ATTAQUE, EFFETS, DÉFAUSSE) <<<
+
+                        # CORRECTION ICI :
+                        # CardView.handle_event renvoie None sur un clic gauche (pour éviter conflit drag).
+                        # On doit donc déclencher l'action manuellement ici.
+
+                        # 1. Cas spécial : Inspection d'une pile de défausse
+                        if hasattr(clicked_cv, 'metadata') and clicked_cv.metadata and clicked_cv.metadata.get(
+                                "action") == "VIEW_DISCARD":
+                            player = clicked_cv.metadata["player"]
+                            self.viewing_discard_pile = player.discard
+                            self.viewing_discard_owner_name = player.name
+                            self._init_layout()
+
+                        # 2. Cas général : Interaction de jeu (Attaquer / Sélectionner)
+                        else:
+                            self._try_play_card(clicked_cv.card)
 
             # B. CLIC GAUCHE RELÂCHÉ : FIN DU DRAG (DROP)
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -584,6 +596,13 @@ class GameScreen(BaseScreen):
         return ""
 
     def _handle_button_action(self, action_id):
+        # 1. Gestion du Menu (Pause / Quitter)
+        if action_id == "CMD_MENU":
+            self.show_confirm_menu = True
+            self._create_confirm_buttons()
+            return
+
+        # 2. Gestion des coups de jeu (Play, Attack, Pass...)
         if action_id.startswith("MOVE:"):
             idx = int(action_id.split(":")[1])
             legal_moves = self.game.get_legal_moves()
