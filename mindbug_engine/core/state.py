@@ -6,15 +6,20 @@ from mindbug_engine.core.consts import Phase
 if TYPE_CHECKING:
     from mindbug_engine.core.models import Player, Card, SelectionRequest
 
+
 class GameState:
     """
     Contient TOUTES les données mutables du jeu.
+    Optimisé pour la sérialisation (Pickle) afin d'accélérer l'IA.
     """
+
     def __init__(self, deck: List[Card], player1: Player, player2: Player):
         # --- DONNÉES PRINCIPALES ---
         self.deck = deck
         self.player1 = player1
         self.player2 = player2
+
+        # Référence statique lourde (exclue de la copie IA)
         self.all_cards_ref: List[Card] = []
 
         # --- ÉTAT DU TOUR ---
@@ -26,25 +31,14 @@ class GameState:
         self.winner: Any = None
 
         # --- ÉTATS TRANSITOIRES (Machine à états) ---
-
-        # Carte qui vient d'être jouée (en attente de décision Mindbug)
-        # C'est cet attribut qui manquait !
         self.pending_card: Optional[Card] = None
-
-        # Créature qui déclare une attaque (attente de blocage)
         self.pending_attacker: Optional[Card] = None
-
-        # Créature sous effet Fureur (doit rejouer immédiatement)
         self.frenzy_candidate: Optional[Card] = None
 
         # --- INTERRUPTIONS & FLUX ---
-
-        # Demande de sélection active (ex: "Choisir une carte à défausser")
         self.active_request: Optional[SelectionRequest] = None
-
-        # Flags de contrôle de flux
-        self.mindbug_replay_pending = False  # P1 doit rejouer après s'être fait voler ?
-        self.end_turn_pending = False  # Fin de tour en attente de résolution ?
+        self.mindbug_replay_pending = False
+        self.end_turn_pending = False
 
     @property
     def active_player(self) -> Player:
@@ -60,6 +54,23 @@ class GameState:
     def players(self) -> List[Player]:
         """Retourne la liste des deux joueurs."""
         return [self.player1, self.player2]
+
+    def __getstate__(self):
+        """
+        OPTIMISATION IA : Exclut les données lourdes/inutiles lors du clonage.
+        """
+        state = self.__dict__.copy()
+        # On supprime la référence globale aux cartes (inutile pour la simulation)
+        if 'all_cards_ref' in state:
+            del state['all_cards_ref']
+        return state
+
+    def __setstate__(self, state):
+        """Restauration de l'état après un pickle.loads()."""
+        self.__dict__.update(state)
+        # On remet une liste vide par sécurité
+        if not hasattr(self, 'all_cards_ref'):
+            self.all_cards_ref = []
 
     def __repr__(self):
         return f"<GameState P{self.active_player_idx + 1} | Phase={self.phase.name} | Deck={len(self.deck)}>"
