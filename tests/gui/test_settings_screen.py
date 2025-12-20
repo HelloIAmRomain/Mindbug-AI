@@ -73,9 +73,11 @@ def test_action_cycle_difficulty_states(mock_app, settings_screen):
 
 def test_save_on_exit(mock_app, settings_screen):
     """Vérifie la sauvegarde en quittant avec ECHAP."""
+    mock_app.config.save = MagicMock()  # On s'assure que c'est bien 'save' qui est mocké
+
     evt = pygame.event.Event(pygame.KEYDOWN, {'key': pygame.K_ESCAPE})
     settings_screen.handle_events([evt])
-    mock_app.config.save_settings.assert_called_once()
+    mock_app.config.save.assert_called_once()
 
 
 def test_toggles_initial_state(mock_app):

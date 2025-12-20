@@ -4,18 +4,6 @@ from mindbug_engine.core.models import Card, CardEffect
 from mindbug_engine.core.consts import Phase, Trigger, EffectType
 
 
-@pytest.fixture
-def game():
-    """Fixture d'un jeu vide pour tester les mécaniques isolées."""
-    g = MindbugGame(verbose=False)
-    g.state.player1.hand = []
-    g.state.player2.hand = []
-    g.state.player1.board = []
-    g.state.player2.board = []
-    g.state.deck = []
-    return g
-
-
 def test_trigger_unblocked_effect(game):
     """
     Test ON_UNBLOCKED (ex: Turboustique qui pique si non bloqué).

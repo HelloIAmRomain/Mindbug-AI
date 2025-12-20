@@ -4,25 +4,6 @@ from mindbug_engine.core.models import Card, CardEffect
 from mindbug_engine.core.consts import Phase, Trigger, EffectType, Keyword
 
 
-@pytest.fixture
-def game():
-    g = MindbugGame(verbose=False)
-
-    # NETTOYAGE COMPLET
-    g.state.player1.hand = []
-    g.state.player2.hand = []
-    g.state.player1.board = []
-    g.state.player2.board = []
-    g.state.player1.discard = []
-    g.state.player2.discard = []
-    g.state.deck = []  # Pas de pioche auto
-
-    # On désactive les Mindbugs pour tester les effets "Jeu" immédiatement
-    g.state.player1.mindbugs = 0
-    g.state.player2.mindbugs = 0
-
-    return g
-
 
 # =============================================================================
 # 01 - Dr Axolotl : Jouer : Gagnez 2PV.
@@ -545,6 +526,11 @@ def test_27_arachnhibou(game):
 # =============================================================================
 def test_28_baril(game):
     p1, p2 = game.state.player1, game.state.player2
+
+    # SETUP
+    # On vide la main de P1 pour que le compte final soit exact (0 + 2 = 2)
+    p1.hand = []
+
     effect = CardEffect(EffectType.STEAL, target={"group": "OPPONENT", "zone": "HAND", "count": 2, "select": "RANDOM"})
     card = Card("28", "Baril", 6, trigger=Trigger.ON_DEATH, effects=[effect])
 

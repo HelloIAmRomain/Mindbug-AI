@@ -3,13 +3,6 @@ from mindbug_engine.engine import MindbugGame
 from mindbug_engine.core.consts import Phase, Difficulty
 from mindbug_ai.factory import AgentFactory
 
-@pytest.fixture
-def game():
-    # --- FIX CRUCIAL : start_game() ---
-    g = MindbugGame(verbose=False)
-    g.start_game()
-    return g
-
 
 def test_ai_integration_decision_does_not_mutate_game(game):
     """Vérifie que la réflexion de l'IA ne modifie pas le vrai jeu."""

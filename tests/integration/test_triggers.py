@@ -4,39 +4,28 @@ from mindbug_engine.core.models import Card, CardEffect
 from mindbug_engine.core.consts import Phase, EffectType, Trigger
 
 
-@pytest.fixture
-def game():
-    # Setup manuel d'un jeu vide
-    g = MindbugGame(verbose=False)
-    g.state.player1.hand = []
-    g.state.player2.hand = []
-    g.state.player1.board = []
-    g.state.player2.board = []
-    g.state.deck = []
-    return g
-
-
 def test_integration_on_play_trigger(game):
     p1 = game.state.player1
     p1.hp = 1
 
-    # Carte Soin (V2)
-    effect = CardEffect(EffectType.MODIFY_STAT,
-                        target={"group": "OWNER"},
-                        params={"stat": "HP", "amount": 3, "operation": "ADD"})
+    # Nettoyage pour garantir l'index 0
+    p1.hand = []
 
+    # Pour tester le PASS manuel, il faut que P2 ait un mindbug
+    game.state.player2.mindbugs = 1
+
+    effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OWNER"},
+                        params={"stat": "HP", "amount": 3, "operation": "ADD"})
     healer = Card("h1", "Doc", 1, trigger=Trigger.ON_PLAY, effects=[effect])
-    p1.hand.append(healer)
+
+    p1.hand.append(healer)  # Index 0
 
     game.state.active_player_idx = 0
     game.state.phase = Phase.P1_MAIN
 
-    # 1. P1 joue
     game.step("PLAY", 0)
-    # 2. P2 passe (Refus Mindbug)
-    game.step("PASS")
+    game.step("PASS")  # P2 refuse
 
-    # L'effet s'applique après la résolution
     assert p1.hp == 4
     assert healer in p1.board
 
@@ -46,23 +35,27 @@ def test_integration_mindbug_steals_effect(game):
     p2 = game.state.player2
     p2.hp = 1
 
-    effect = CardEffect(EffectType.MODIFY_STAT,
-                        target={"group": "OWNER"},
-                        params={"stat": "HP", "amount": 3, "operation": "ADD"})
+    # Nettoyage
+    p1.hand = []
 
+    # Activation Mindbug
+    p2.mindbugs = 1
+
+    effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OWNER"},
+                        params={"stat": "HP", "amount": 3, "operation": "ADD"})
     healer = Card("h1", "Doc", 1, trigger=Trigger.ON_PLAY, effects=[effect])
-    p1.hand.append(healer)
+
+    p1.hand.append(healer)  # Index 0
 
     game.state.active_player_idx = 0
     game.state.phase = Phase.P1_MAIN
 
     game.step("PLAY", 0)
-    game.step("MINDBUG")  # P2 vole
+    game.step("MINDBUG")
 
-    # La carte arrive chez P2, l'effet s'applique à P2 (OWNER)
     assert healer in p2.board
     assert p2.hp == 4
-    assert p1.hp == 3  # P1 inchangé
+    assert p1.hp == 3
 
 
 def test_integration_on_death_trigger_with_selection(game):
