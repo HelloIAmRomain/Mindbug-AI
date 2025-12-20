@@ -1,27 +1,25 @@
-from typing import List, Optional, Any
-from mindbug_engine.core.models import Player, Card, SelectionRequest
+from __future__ import annotations
+from typing import TYPE_CHECKING, List, Optional, Any
+
 from mindbug_engine.core.consts import Phase
 
+if TYPE_CHECKING:
+    from mindbug_engine.core.models import Player, Card, SelectionRequest
 
 class GameState:
     """
     Contient TOUTES les données mutables du jeu.
-    C'est la 'Vérité' de la partie à un instant T.
-    Il ne contient aucune logique, seulement des données.
     """
-
     def __init__(self, deck: List[Card], player1: Player, player2: Player):
         # --- DONNÉES PRINCIPALES ---
         self.deck = deck
         self.player1 = player1
         self.player2 = player2
-
-        # Référence de toutes les cartes possibles dans ce match (Pool complet)
         self.all_cards_ref: List[Card] = []
 
         # --- ÉTAT DU TOUR ---
         self.turn_count = 1
-        self.active_player_idx = 0  # 0 = Player1, 1 = Player2
+        self.active_player_idx = 0
         self.phase = Phase.P1_MAIN
 
         # Gagnant de la partie (None tant que la partie est en cours)

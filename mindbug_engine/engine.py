@@ -19,11 +19,9 @@ from mindbug_engine.managers.turn_manager import TurnManager
 from mindbug_engine.managers.combat_manager import CombatManager
 from mindbug_engine.managers.effect_manager import EffectManager
 from mindbug_engine.managers.query_manager import QueryManager
-from mindbug_engine.managers.settings_manager import SettingsManager
 
 # --- IMPORTS COMMANDS & BUILDER ---
 from mindbug_engine.commands.command_factory import CommandFactory
-from mindbug_engine.game_builder import GameBuilder
 
 
 class MindbugGame:
@@ -301,7 +299,4 @@ class MindbugGame:
         new_game.combat_manager = CombatManager(new_game)
         new_game.effect_manager = EffectManager(new_game)
         new_game.combat_manager.effect_manager = new_game.effect_manager
-        # Settings et Builder ne sont pas critiques pour le clone (utilisé pour l'IA Combat)
-        # mais on peut les ajouter si besoin.
-        new_game.preconfigured_deck = self.preconfigured_deck
         return new_game
