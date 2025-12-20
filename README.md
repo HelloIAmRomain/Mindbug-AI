@@ -65,28 +65,10 @@ cd mindbug-engine
 pip install -r requirements.txt
 ```
 
-### Exemple d'utilisation (Script)
+### Utilisation
 
-```python
-from mindbug_engine.engine import MindbugGame
-
-# 1. Initialiser une partie
-game = MindbugGame(verbose=True)
-game.start_game()
-
-# 2. Joueur 1 joue une carte (Index 0 de sa main)
-# Le moteur gère automatiquement la pause pour le choix de Mindbug adverse
-game.step("PLAY", 0)
-
-# 3. L'adversaire (P2) décide de ne pas utiliser de Mindbug
-game.step("PASS")
-
-# 4. Fin de tour automatique, c'est au tour de P2
-# P2 attaque avec sa créature (Index 0 sur son board)
-game.step("ATTACK", 0)
-
-# 5. P1 bloque avec sa créature
-game.step("BLOCK", 0)
+```bash
+python3 main.py
 ```
 
 ## 🧪 Tests & Qualité
