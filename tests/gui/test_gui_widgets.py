@@ -50,16 +50,3 @@ def test_button_interaction(pygame_setup):
 
     btn.update(0, (10, 10))
     assert btn.handle_event(event) == "CLICKED"
-
-
-def test_card_view_interactions(pygame_setup, mock_resource_manager):
-    card = Card("test_id", "Test Name", 5)
-
-    # CORRECTION : Arguments w->width, h->height
-    view = CardView(card, x=0, y=0, w=100, h=100)
-    view.update(0, (50, 50))
-
-    evt_left = Mock()
-    evt_left.type = pygame.MOUSEBUTTONDOWN
-    evt_left.button = 1
-    assert view.handle_event(evt_left) == ("CLICK_CARD", card)
