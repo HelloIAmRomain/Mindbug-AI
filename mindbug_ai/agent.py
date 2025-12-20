@@ -1,5 +1,6 @@
 import random
 from mindbug_engine.core.consts import Phase, Difficulty
+from mindbug_engine.utils.logger import log_error
 from .interface import AgentInterface
 
 
@@ -129,7 +130,7 @@ class HeuristicAgent(AgentInterface):
 
             except Exception as e:
                 # Si la simulation crash (bug moteur rare), on ignore ce coup pour ne pas planter l'IA
-                print(f"⚠️ Warning AI Simulation: {e}")
+                log_error(f"⚠️ Warning AI Simulation: {e}")
                 continue
 
         return best_move

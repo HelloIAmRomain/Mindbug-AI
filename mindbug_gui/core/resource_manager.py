@@ -2,6 +2,8 @@ import pygame
 import os
 import sys
 
+from mindbug_engine.utils.logger import log_error
+
 # Si on n'a pas de fichier de config global, on hardcode le chemin relatif par défaut
 PATH_ASSETS = os.path.join(os.path.dirname(__file__), "..", "..", "assets")
 
@@ -74,7 +76,7 @@ class ResourceManager:
                     self.images_cache[filename] = img
                     return img
                 except Exception as e:
-                    print(f"ERROR loading {path}: {e}")
+                    log_error(f"ERROR loading {path}: {e}")
 
         # 5. Échec -> Placeholder
         self.images_cache[filename] = self._create_placeholder_card(card_model.name)

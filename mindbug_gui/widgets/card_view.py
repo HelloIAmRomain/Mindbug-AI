@@ -1,6 +1,7 @@
 import pygame
 from typing import Tuple, Optional
 
+from mindbug_engine.utils.logger import log_error
 # --- CORE & WIDGETS ---
 from mindbug_gui.widgets.buttons import UIWidget
 from mindbug_gui.core.resource_manager import ResourceManager
@@ -57,7 +58,7 @@ class CardView(UIWidget):
             if raw_img:
                 self._cached_image = pygame.transform.smoothscale(raw_img, (self.rect.width, self.rect.height))
         except Exception as e:
-            print(f"⚠️ Erreur chargement image {self.card.name}: {e}")
+            log_error(f"⚠️ Erreur chargement image {self.card.name}: {e}")
             self._cached_image = None
 
     def update(self, dt: float, mouse_pos: Tuple[int, int]):

@@ -1,12 +1,14 @@
 import pygame
 import sys
 from .colors import BG_COLOR
+from mindbug_engine.core.config import ConfigurationService
 from .resource_manager import ResourceManager
-from .config import Config
 
 # Imports pour le scan des données
 from mindbug_engine.infrastructure.card_loader import CardLoader
 from constants import PATH_DATA
+
+from mindbug_engine.utils.logger import log_info, log_debug, log_error
 
 
 class MindbugApp:
@@ -16,17 +18,16 @@ class MindbugApp:
     """
 
     def __init__(self):
-        # 1. Init Pygame (Minimale)
         pygame.display.init()
         pygame.font.init()
 
-        # 2. Chargement Configuration
-        self.config = Config()
+        # Config UI (Résolution, Fullscreen) - Garder Config pour ça
+        self.config = ConfigurationService()
 
-        # 3. Initialisation des Données (Sets de cartes)
+        # Initialisation des Données (Sets de cartes)
         self._init_game_data()
 
-        # 4. Configuration Fenêtre
+        # Configuration Fenêtre
         w, h = getattr(self.config, "resolution", (1280, 720))
         flags = pygame.RESIZABLE
 
@@ -51,7 +52,7 @@ class MindbugApp:
         Met à jour la config (pour l'écran Settings) et valide les sets actifs.
         """
         try:
-            print(f"Chargement des données depuis : {PATH_DATA}")
+            log_info(f"Chargement des données depuis : {PATH_DATA}")
             all_cards = CardLoader.load_from_json(PATH_DATA)
 
             # Extraction des sets uniques (triés alphabétiquement)
@@ -59,19 +60,19 @@ class MindbugApp:
 
             # Injection dans la config (variable volatile)
             self.config.available_sets_in_db = available_sets
-            print(f"Sets détectés : {available_sets}")
+            log_debug(f"Sets détectés : {available_sets}")
 
             # Validation : Si les sets actifs configurés n'existent plus, on reset
             valid_active = [s for s in self.config.active_sets if s in available_sets]
 
             if not valid_active and available_sets:
-                print("⚠️ Aucun set actif valide. Reset sur le premier set disponible.")
+                log_debug("⚠️ Aucun set actif valide. Reset sur le premier set disponible.")
                 self.config.active_sets = [available_sets[0]]
             elif valid_active:
                 self.config.active_sets = valid_active
 
         except Exception as e:
-            print(f"❌ ERREUR CRITIQUE chargement données : {e}")
+            log_error(f"❌ ERREUR CRITIQUE chargement données : {e}")
             # Fallback pour ne pas crasher l'UI
             self.config.available_sets_in_db = ["First Contact"]
             self.config.active_sets = ["First Contact"]
@@ -131,13 +132,13 @@ class MindbugApp:
         if action == "START_PVE":
             # Le bouton "Jouer Solo" a été cliqué
             self.config.game_mode = "PVE"
-            self.config.save_settings()  # On mémorise la préférence
+            self.config.save()  # On mémorise la préférence
             self._start_game()
 
         elif action == "START_PVP":
             # Le bouton "Jouer Local" a été cliqué -> Mode HOTSEAT
             self.config.game_mode = "HOTSEAT"
-            self.config.save_settings()
+            self.config.save()
             self._start_game()
 
         # =================================================================
@@ -174,7 +175,7 @@ class MindbugApp:
                 self.current_screen.on_resize(w, h)
 
     def _shutdown(self):
-        print("Fermeture de l'application...")
+        log_info("Fermeture de l'application...")
         pygame.quit()
         sys.exit()
 

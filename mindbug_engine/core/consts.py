@@ -55,3 +55,12 @@ class Difficulty(str, Enum):
     EASY = "EASY"
     MEDIUM = "MEDIUM"
     HARD = "HARD"
+
+class CardStatus(str, Enum):
+    """
+    Définit l'état visuel ou logique d'une carte sur le plateau.
+    Ajouté pour corriger l'ImportError.
+    """
+    NORMAL = "NORMAL"
+    DAMAGED = "DAMAGED"    # Pour les créatures TOUGH ayant déjà survécu à un coup
+    EXHAUSTED = "EXHAUSTED" # Si vous implémentez une mécanique d'engagement

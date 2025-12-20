@@ -4,21 +4,13 @@ from mindbug_engine.core.models import Card, SelectionRequest
 from mindbug_engine.core.consts import Phase
 
 
-@pytest.fixture
-def game():
-    g = MindbugGame(verbose=False)
-    # Setup basique pour éviter les erreurs d'index
-    g.state.player1.hand = [Card("c1", "C1", 1)]
-    g.state.player1.board = [Card("b1", "B1", 1)]
-    g.state.player2.hand = []
-    g.state.player2.board = [Card("b2", "B2", 1)]
-    return g
-
-
 def test_legal_moves_main_phase(game):
     """Vérifie que PLAY et ATTACK sont dispos en Main Phase."""
     game.state.phase = Phase.P1_MAIN
     game.state.active_player_idx = 0
+
+    from mindbug_engine.core.models import Card
+    game.state.player1.board = [Card("b1", "Beast", 5)]
 
     moves = game.get_legal_moves()
 
@@ -27,23 +19,24 @@ def test_legal_moves_main_phase(game):
 
 
 def test_legal_moves_selection(game):
-    """Vérifie la génération des coups de sélection."""
-    game.state.phase = Phase.RESOLUTION_CHOICE
-    game.state.active_player_idx = 0  # P1 Actif
+    # Setup du plateau pour le test
+    from mindbug_engine.core.models import Card
+    target = Card("target", "Target", 5)
+    game.state.player2.board = [target]
 
-    # On simule une demande : P1 doit choisir une carte sur le plateau adverse (P2)
+    game.state.phase = Phase.RESOLUTION_CHOICE
+    game.state.active_player_idx = 0
+
     req = SelectionRequest(
-        candidates=[game.state.player2.board[0]],
+        candidates=[target],  # Utilise la carte créée
         count=1,
         reason="Test",
-        selector=game.state.player1,  # V3 utilise 'selector'
+        selector=game.state.player1,
         callback=lambda x: None
     )
     game.state.active_request = req
 
     moves = game.get_legal_moves()
-
-    # Du point de vue de P1, le plateau de P2 est OPP_BOARD
     assert ("SELECT_OPP_BOARD", 0) in moves
 
 

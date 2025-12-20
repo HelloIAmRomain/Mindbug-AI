@@ -4,6 +4,7 @@ from mindbug_engine.commands.definitions import (
     NoBlockCommand, MindbugCommand, PassCommand, ResolveSelectionCommand
 )
 from mindbug_engine.core.consts import Phase
+from mindbug_engine.utils.logger import log_error
 
 
 class CommandFactory:
@@ -40,7 +41,7 @@ class CommandFactory:
                 from mindbug_engine.commands.definitions import ResolveSelectionCommand
                 return ResolveSelectionCommand(selected_object=target)
             else:
-                print(f"❌ Factory: Target not found for {action_type} [{index}]")
+                log_error(f"❌ Factory: Target not found for {action_type} [{index}]")
                 return None
         return None
 

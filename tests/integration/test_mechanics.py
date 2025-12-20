@@ -3,15 +3,6 @@ from mindbug_engine.core.models import Card
 from mindbug_engine.engine import MindbugGame
 from mindbug_engine.core.consts import Phase, Trigger, Keyword
 
-@pytest.fixture
-def game():
-    g = MindbugGame(verbose=False)
-    g.state.player1.hand = []
-    g.state.player2.hand = []
-    g.state.player1.board = []
-    g.state.player2.board = []
-    return g
-
 
 def test_mechanic_tough_survival(game):
     p1 = game.state.player1

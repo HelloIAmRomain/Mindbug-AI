@@ -1,9 +1,0 @@
-{
-    "debug_mode": true,
-    "game_mode": "PVE",
-    "active_sets": [
-        "FIRST_CONTACT"
-    ],
-    "fullscreen": false,
-    "ai_difficulty": "MEDIUM"
-}
