@@ -12,7 +12,7 @@ from mindbug_engine.core.consts import Keyword
 from mindbug_gui.core.colors import (
     TEXT_PRIMARY, TEXT_SECONDARY,
     BTN_SURFACE, BTN_BORDER,
-    STATUS_OK, STATUS_WARN, STATUS_CRIT, ACCENT,
+    STATUS_OK, STATUS_CRIT, ACCENT,
     HIGHLIGHT_GOLD
 )
 
@@ -20,8 +20,7 @@ from mindbug_gui.core.colors import (
 class CardView(UIWidget):
     """
     Widget représentant une carte.
-    Gère l'affichage (Image ou Fallback Texte), le dos de carte,
-    et les indicateurs d'état (Attaque, Sélection, Puissance).
+    Gère l'affichage, les indicateurs d'état et désormais le Drag & Drop.
     """
 
     def __init__(self, card: Card, x: int, y: int, w: int, h: int, is_hidden: bool = False):
@@ -32,6 +31,11 @@ class CardView(UIWidget):
         self.is_hidden = is_hidden
         self.visible = True
 
+        # --- ÉTATS DRAG & DROP (NOUVEAU) ---
+        self.is_dragging = False
+        self.origin_pos = (x, y)  # Position de retour si le drop échoue
+        self.drag_offset = (0, 0)  # Écart souris/coin pour un déplacement fluide
+
         # États visuels (Pilotés par GameScreen)
         self.is_highlighted = False  # Coup légal / Jouable
         self.is_attacking = False  # En train d'attaquer
@@ -41,11 +45,9 @@ class CardView(UIWidget):
         self.res_manager = ResourceManager()
         self._cached_image = None
 
-        # Préparation des Polices (Optimisation : instanciées une seule fois)
+        # Préparation des Polices (Optimisation)
         self.font_title = pygame.font.SysFont("Arial", int(h * 0.1), bold=True)
         self.font_kw = pygame.font.SysFont("Arial", int(h * 0.08))
-
-        # Font pour la bulle de puissance (approx 30% de la largeur)
         self.font_power = pygame.font.Font(None, int(w * 0.3))
 
         # Chargement initial de l'image
@@ -61,6 +63,37 @@ class CardView(UIWidget):
             log_error(f"⚠️ Erreur chargement image {self.card.name}: {e}")
             self._cached_image = None
 
+    # =========================================================================
+    #  LOGIQUE DRAG & DROP
+    # =========================================================================
+
+    def start_drag(self, mouse_pos: Tuple[int, int]):
+        """Commence le déplacement de la carte."""
+        if self.is_hidden: return  # On ne peut pas déplacer une carte cachée (ex: main adverse)
+
+        self.is_dragging = True
+        # On sauvegarde la position actuelle pour pouvoir y revenir (snap back)
+        self.origin_pos = (self.rect.x, self.rect.y)
+        # On calcule le décalage pour que la carte ne "saute" pas au centre de la souris
+        self.drag_offset = (self.rect.x - mouse_pos[0], self.rect.y - mouse_pos[1])
+
+    def update_drag_position(self, mouse_pos: Tuple[int, int]):
+        """Met à jour la position pendant le mouvement."""
+        if self.is_dragging:
+            new_x = mouse_pos[0] + self.drag_offset[0]
+            new_y = mouse_pos[1] + self.drag_offset[1]
+            self.rect.topleft = (new_x, new_y)
+
+    def stop_drag(self):
+        """Termine le déplacement et remet la carte à sa place d'origine."""
+        self.is_dragging = False
+        # Retour élastique à la position d'origine (le GameScreen changera cette position si le coup est valide)
+        self.rect.topleft = self.origin_pos
+
+    # =========================================================================
+    #  MÉTHODES STANDARD UIWIDGET
+    # =========================================================================
+
     def update(self, dt: float, mouse_pos: Tuple[int, int]):
         """Met à jour le survol."""
         if mouse_pos:
@@ -70,19 +103,18 @@ class CardView(UIWidget):
 
     def handle_event(self, event: pygame.event.Event) -> Optional[Tuple[str, Card]]:
         """
-        Gère les clics.
-        Retourne un tuple (TYPE_EVENT, CARD_OBJ) pour que le GameScreen sache quoi faire.
+        Gère les clics (Zoom, etc.).
+        Note: Le Drag & Drop est géré par le GameScreen, mais on garde le clic droit ici.
         """
         if not self.visible: return None
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.is_hovered:
-                # Clic Gauche : Interaction Jeu
-                if event.button == 1:
-                    return ("CLICK_CARD", self.card)
                 # Clic Droit : Zoom
-                elif event.button == 3:
+                if event.button == 3:
                     return ("ZOOM_CARD", self.card)
+                # Clic Gauche : On laisse le GameScreen gérer le Drag via start_drag()
+
         return None
 
     def draw(self, surface: pygame.Surface, override_power: Optional[int] = None):
@@ -115,7 +147,6 @@ class CardView(UIWidget):
         pygame.draw.rect(surface, BTN_SURFACE, self.rect, border_radius=8)
         pygame.draw.rect(surface, BTN_BORDER, self.rect, 2, border_radius=8)
 
-        # Décoration simple (Cercle central)
         cx, cy = self.rect.center
         pygame.draw.circle(surface, (60, 70, 90), (cx, cy), 15)
         pygame.draw.circle(surface, BTN_BORDER, (cx, cy), 15, width=2)
@@ -126,24 +157,18 @@ class CardView(UIWidget):
 
     def _draw_fallback_text(self, surface):
         """Affiche un design généré si l'image manque."""
-        # Fond sombre
         pygame.draw.rect(surface, (30, 35, 45), self.rect, border_radius=8)
 
-        # Nom de la carte (Troncation si > 12 chars)
         name_txt = self.card.name
         if len(name_txt) > 12: name_txt = name_txt[:10] + ".."
 
         txt_surf = self.font_title.render(name_txt, True, TEXT_PRIMARY)
-        # Centré en haut avec une marge
         txt_rect = txt_surf.get_rect(midtop=(self.rect.centerx, self.rect.y + 10))
         surface.blit(txt_surf, txt_rect)
 
-        # Mots-clés en bas
         if self.card.keywords:
-            # On prend la première lettre (ex: P, F, H)
             kw_list = []
             for k in self.card.keywords:
-                # Gestion robuste (Enum vs String)
                 val = k.value if hasattr(k, 'value') else str(k)
                 kw_list.append(val[0].upper())
 
@@ -157,24 +182,15 @@ class CardView(UIWidget):
         border_col = BTN_BORDER
         width = 1
 
-        # Ordre de priorité des bordures :
-
-        # 1. Attaque (Le plus important, rouge danger)
         if self.is_attacking:
             border_col = STATUS_CRIT
             width = 4
-
-        # 2. Sélectionné (Cible d'un effet ou Zoom)
         elif self.is_selected:
             border_col = ACCENT
             width = 3
-
-        # 3. Surlignage (Coup légal / Jouable) -> C'est ici qu'on change !
         elif self.is_highlighted:
             border_col = HIGHLIGHT_GOLD
-            width = 3  # Bordure épaisse pour bien voir que c'est jouable
-
-        # 4. Survol souris (Hover simple)
+            width = 3
         elif self.is_hovered:
             border_col = TEXT_PRIMARY
             width = 2
@@ -185,36 +201,30 @@ class CardView(UIWidget):
         """Affiche la puissance dans un cercle en bas à droite."""
         val = override_power if override_power is not None else self.card.power
 
-        # Couleurs contextuelles
-        txt_color = (20, 20, 20)  # Noir
-        bg_circle = TEXT_PRIMARY  # Blanc
+        txt_color = (20, 20, 20)
+        bg_circle = TEXT_PRIMARY
 
-        # Gestion Poison / Buff / Debuff
         has_poison = False
         for k in self.card.keywords:
-            k_str = str(k).upper()
-            if "POISON" in k_str:
+            if "POISON" in str(k).upper():
                 has_poison = True
                 break
 
         if has_poison:
-            txt_color = STATUS_OK  # Vert fluo
-            bg_circle = (20, 40, 20)  # Vert sombre
+            txt_color = STATUS_OK
+            bg_circle = (20, 40, 20)
         elif val > self.card.power:
-            txt_color = STATUS_OK  # Vert (Buff)
+            txt_color = STATUS_OK
         elif val < self.card.power:
-            txt_color = STATUS_CRIT  # Rouge (Debuff)
+            txt_color = STATUS_CRIT
 
-        # Géométrie
         radius = int(self.rect.width * 0.18)
         cx = self.rect.right - radius - 5
         cy = self.rect.bottom - radius - 5
 
-        # Dessin du cercle
         pygame.draw.circle(surface, bg_circle, (cx, cy), radius)
         pygame.draw.circle(surface, (0, 0, 0), (cx, cy), radius, width=2)
 
-        # Dessin du texte
         val_str = str(val)
         txt_surf = self.font_power.render(val_str, True, txt_color)
         txt_rect = txt_surf.get_rect(center=(cx, cy))
