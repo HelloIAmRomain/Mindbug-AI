@@ -4,44 +4,41 @@ import time
 from copy import deepcopy
 from typing import List, Optional
 
-from mindbug_engine.utils.logger import log_info, log_error
+from mindbug_engine.utils.logger import log_error
+from mindbug_engine.engine import MindbugGame
+from mindbug_engine.core.consts import Phase
+from mindbug_engine.core.models import Card
+from mindbug_ai.factory import AgentFactory
 
 # --- GUI CORE ---
 from mindbug_gui.screens.base_screen import BaseScreen
 from mindbug_gui.widgets.card_view import CardView
 from mindbug_gui.widgets.buttons import Button
 from mindbug_gui.core.zones import ZoneManager
-
-# --- CONFIG & STYLING ---
-from mindbug_gui.core import layout_config as layout
 from mindbug_gui.core.colors import (
-    BG_COLOR, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT,
-    BTN_SURFACE, BTN_DANGER, BTN_HOVER, BTN_MINDBUG, BTN_PASS,
-    STATUS_OK, STATUS_CRIT, HIGHLIGHT_GOLD
+    TEXT_PRIMARY, BTN_SURFACE, BTN_DANGER, BTN_HOVER, BTN_MINDBUG, BTN_PASS
 )
 
-# --- ENGINE ---
-from mindbug_engine.engine import MindbugGame
-from mindbug_engine.core.consts import Phase
-from mindbug_ai.factory import AgentFactory
-from mindbug_engine.core.models import Card
+# --- NEW ARCHITECTURE IMPORTS ---
+from mindbug_gui.controller import InputHandler
+from mindbug_gui.renderers.game_renderer import GameRenderer
 
 
 class GameScreen(BaseScreen):
     """
-    Écran principal du jeu.
-    Gère l'affichage, la boucle de jeu, l'IA et les interactions (Clic & Drag).
+    Controller principal du jeu.
+    Orchestre la communication entre le Moteur (MindbugGame), 
+    la Logique d'Entrée (InputHandler) et le Rendu (GameRenderer).
     """
 
     def __init__(self, app):
         super().__init__(app)
-        self.res = app.res_manager
 
-        # --- 1. ENGINE & CONFIG ---
-        self.error_message: Optional[str] = None
-        self.error_buttons: List[Button] = []
-
+        # 1. INITIALISATION DU MOTEUR (BACKEND)
         self.game = MindbugGame(config=self.app.config)
+        self.error_message = None
+
+        # Sauvegarde des sets actifs si nécessaire
         if not self.app.config.active_sets and hasattr(self.game, 'used_sets'):
             self.app.config.active_sets = self.game.used_sets
             self.app.config.save()
@@ -50,88 +47,364 @@ class GameScreen(BaseScreen):
             self.game.start_game()
         except ValueError as e:
             self.error_message = str(e)
-            self._init_error_ui()
-            return
 
-        # --- 2. GAME MODE ---
-        self.game_mode = self.app.config.game_mode
+        # 2. IA (AGENT)
         self.ai_agent = None
+        if self.app.config.game_mode == "PVE":
+            self.ai_agent = AgentFactory.create_agent(
+                difficulty=self.app.config.ai_difficulty)
         self.ai_thinking = False
         self.ai_thread_result = None
-        if self.game_mode == "PVE":
-            self.ai_agent = AgentFactory.create_agent(difficulty=self.app.config.ai_difficulty)
 
-        # --- 3. UI STATE ---
-        self.last_active_idx = self.game.state.active_player_idx  # Plus fiable que l'objet Player
-        self.show_curtain = (self.game_mode == "HOTSEAT")
-        self.zoomed_card = None
+        # 3. INITIALISATION DE LA VUE (RENDERER)
+        # Le renderer est stateless, on lui passe juste les ressources et dimensions
+        self.renderer = GameRenderer(app.res_manager, self.width, self.height)
 
-        self.viewing_discard_pile: Optional[List[Card]] = None
-        self.viewing_discard_owner_name: str = ""
-
-        self.show_confirm_menu = False
-        self.confirm_buttons: List[Button] = []
-
-        # --- 4. DRAG & DROP SYSTEM ---
+        # 4. ÉTAT UI (Model-View State)
         self.zones = {}
-        self.show_debug_zones = False
-
-        self.dragged_card_view: Optional[CardView] = None
-        self.valid_drop_zones: List[str] = []
-        self.hovered_zone_id: Optional[str] = None
-        self.current_ghost_rect: Optional[pygame.Rect] = None  # Position calculée du fantôme
-
-        # Widgets
         self.card_views: List[CardView] = []
         self.ui_buttons: List[Button] = []
 
+        # Modales & Popups
+        self.confirm_buttons: List[Button] = []
+        self.error_buttons: List[Button] = []
+        self.show_confirm_menu = False
+        self.show_curtain = (self.app.config.game_mode == "HOTSEAT")
+        self.last_active_idx = 0
+
+        # États d'interaction
+        self.zoomed_card = None
+        self.viewing_discard_pile = None
+        self.viewing_discard_owner_name = ""
+        self.show_debug_zones = False
+
+        # Drag & Drop State
+        self.dragged_card_view: Optional[CardView] = None
+        self.valid_drop_zones: List[str] = []
+        self.hovered_zone_id: Optional[str] = None
+        self.current_ghost_rect: Optional[pygame.Rect] = None
+
         # Premier calcul de layout
         self.on_resize(self.width, self.height)
-
-    # =========================================================================
-    #  LAYOUT & ZONES
-    # =========================================================================
-
-    def on_resize(self, w, h):
-        """Recalcule tout lors d'un redimensionnement."""
-        super().on_resize(w, h)
-        # Recalcul des rectangles de zones via le Manager
-        self.zones = ZoneManager.create_zones(w, h)
-
         if self.error_message:
             self._init_error_ui()
+
+    def on_resize(self, w, h):
+        """Met à jour les dimensions du renderer et recalcule les zones."""
+        super().on_resize(w, h)
+        self.renderer.on_resize(w, h)
+        self.zones = ZoneManager.create_zones(w, h)
+
+        if not self.error_message:
+            self._refresh_ui_components()
         else:
-            self._init_layout()
+            self._init_error_ui()
 
-    def _init_layout(self):
-        """Reconstruit l'interface en injectant les cartes dans les Zones."""
-        if self.error_message: return
+    # =========================================================================
+    #  BOUCLE PRINCIPALE (EVENTS, UPDATE, DRAW)
+    # =========================================================================
 
+    def handle_events(self, events):
+        for event in events:
+            # 1. Raccourcis Globaux
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return self._handle_escape()
+                if event.key == pygame.K_d:
+                    self.show_debug_zones = not self.show_debug_zones
+
+            # 2. Modales Bloquantes (Erreur, Confirmation, Rideau)
+            if self.error_message:
+                return self._handle_modal_events(event, self.error_buttons)
+
+            if self.show_confirm_menu:
+                res = self._handle_modal_events(event, self.confirm_buttons)
+                if res == "CONFIRM_YES":
+                    return "MENU"
+                if res == "CONFIRM_NO":
+                    self.show_confirm_menu = False
+                return None
+
+            if self.show_curtain:
+                if event.type in [pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN]:
+                    self.show_curtain = False
+                continue
+
+            # Bloqueurs de Gameplay (Fin de partie ou IA qui réfléchit)
+            if self.game.state.winner or self.ai_thinking:
+                continue
+
+            # 3. Interactions Standard (Boutons & Cartes)
+            if self._handle_ui_buttons(event):
+                continue
+
+            self._handle_card_interactions(event)
+
+        return None
+
+    def update(self, dt):
+        if self.error_message:
+            return
+
+        # Logique IA
+        self._update_ai()
+
+        # Logique Rideau (Hotseat)
+        self._check_hotseat_curtain()
+
+        # Mise à jour des widgets (Survol, Animations)
+        mouse_pos = pygame.mouse.get_pos()
+        active_widgets = self.confirm_buttons if self.show_confirm_menu else (
+            self.card_views + self.ui_buttons)
+        for w in active_widgets:
+            w.update(dt, mouse_pos)
+
+    def draw(self, surface):
+        """
+        Construit le contexte UI et délègue le dessin au Renderer.
+        """
+        # On package tout l'état nécessaire au dessin dans un dictionnaire
+        ui_context = {
+            # États Modales
+            "error_message": self.error_message,
+            "error_buttons": self.error_buttons,
+            "show_curtain": self.show_curtain,
+            "show_confirm_menu": self.show_confirm_menu,
+            "confirm_buttons": self.confirm_buttons,
+            "ai_thinking": self.ai_thinking,
+
+            # Widgets interactifs
+            "card_views": self.card_views,
+            "ui_buttons": self.ui_buttons,
+
+            # États Overlay / Inspection
+            "viewing_discard_pile": self.viewing_discard_pile,
+            "viewing_discard_owner_name": self.viewing_discard_owner_name,
+            "is_selection_active": self.game.state.phase == Phase.RESOLUTION_CHOICE,
+
+            # États Drag & Drop
+            "dragged_card_view": self.dragged_card_view,
+            "hovered_zone_id": self.hovered_zone_id,
+            "current_ghost_rect": self.current_ghost_rect,
+            "valid_drop_zones": self.valid_drop_zones,  # Pour debug ou highlight zones
+
+            # États Debug / Zoom
+            "zoomed_card": self.zoomed_card,
+            "show_debug_zones": self.show_debug_zones,
+            "zones": self.zones
+        }
+
+        # Appel unique au Renderer
+        self.renderer.draw(surface, self.game.state, ui_context)
+
+    # =========================================================================
+    #  GESTION DES ENTRÉES (CONTROLLER LOGIC)
+    # =========================================================================
+
+    def _handle_ui_buttons(self, event):
+        """Gère les clics sur les boutons de l'interface."""
+        for btn in self.ui_buttons:
+            if btn.handle_event(event):
+                # Traduction ID Bouton -> Commande Moteur via InputHandler
+                cmd = InputHandler.handle_button_click(btn.action)
+                if cmd:
+                    self._execute_game_step(cmd)
+                elif btn.action == "CMD_MENU":
+                    self._open_confirm_menu()
+                elif btn.action == "SKIP_HUNTER":
+                    # Cas spécial UI : Bypass de la sélection Hunter
+                    self.game.resolve_selection_effect("NO_HUNT")
+                    self._refresh_ui_components()
+                return True
+        return False
+
+    def _handle_card_interactions(self, event):
+        """Gère Clics, Drag start, Drag move, Drop et Zoom."""
+
+        # A. Clic Droit (Zoom) - Géré par le widget CardView
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            self._handle_right_click(event)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
+            self.zoomed_card = None
+
+        # B. Clic Gauche (Interaction ou Drag)
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            clicked_cv = self._get_card_view_under_mouse(event.pos)
+            if clicked_cv:
+                # 1. Cas Inspection Défausse (Metadata UI)
+                if clicked_cv.metadata and clicked_cv.metadata.get("action") == "VIEW_DISCARD":
+                    self._open_discard_pile(clicked_cv.metadata["player"])
+                    return
+
+                # 2. Décision Drag vs Clic
+                # On ne peut draguer que depuis SA main
+                is_in_hand = (
+                    clicked_cv.card in self.game.state.active_player.hand)
+                # Pas de drag en mode sélection ou inspection
+                allow_drag = not (
+                    self.viewing_discard_pile or self.game.state.phase == Phase.RESOLUTION_CHOICE)
+
+                if is_in_hand and allow_drag:
+                    self._start_drag(clicked_cv, event.pos)
+                else:
+                    # Clic simple (Play, Attack, Select)
+                    self._handle_simple_click(clicked_cv.card)
+
+        # C. Souris Relâchée (Drop)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.dragged_card_view:
+                self._stop_drag(event.pos)
+
+        # D. Souris Bouge (Drag Update)
+        elif event.type == pygame.MOUSEMOTION:
+            if self.dragged_card_view:
+                self.dragged_card_view.update_drag_position(event.pos)
+                self._update_ghosts(self.dragged_card_view.rect.center)
+
+    def _handle_simple_click(self, card):
+        """Délègue l'interprétation du clic à l'InputHandler."""
+        action = InputHandler.handle_card_click(self.game, card)
+        if action:
+            if action[0] == "RESOLVE_SELECTION":
+                self.game.resolve_selection_effect(action[1])
+                self._refresh_ui_components()
+            else:
+                self._execute_game_step(action)
+
+    def _start_drag(self, card_view, pos):
+        """Initialise le Drag & Drop."""
+        self.dragged_card_view = card_view
+        card_view.start_drag(pos)
+        # On demande au Controller où on a le droit de lâcher cette carte
+        self.valid_drop_zones = InputHandler.get_valid_drop_zones(
+            self.game, card_view.card)
+        # Feedback visuel immédiat (Ghost dans la zone d'origine pour montrer le trou)
+        self._update_ghosts(pos)
+
+    def _stop_drag(self, pos):
+        """Finalise le Drag & Drop."""
+        card_view = self.dragged_card_view
+        card_view.stop_drag()  # Reset visuel position
+
+        # Interprétation du Drop via InputHandler
+        action = InputHandler.handle_drag_drop(
+            self.game, card_view.card, self.hovered_zone_id)
+
+        # Reset états drag
+        self.dragged_card_view = None
+        self.valid_drop_zones = []
+        self.hovered_zone_id = None
+        self._clear_ghosts()
+
+        if action:
+            # Action valide trouvée !
+            if action[0] == "RESOLVE_SELECTION":
+                self.game.resolve_selection_effect(action[1])
+            else:
+                self.game.step(action[0], action[1])
+            self._refresh_ui_components()
+        else:
+            # Drop invalide -> On vérifie si c'était un "petit" drag (clic maladroit)
+            dist = (pos[0] - card_view.origin_pos[0])**2 + \
+                (pos[1] - card_view.origin_pos[1])**2
+            if dist < 100:
+                self._handle_simple_click(card_view.card)
+            else:
+                # Annulation pure : On refresh juste les positions (snap back)
+                self._update_card_positions_from_zones()
+
+    # =========================================================================
+    #  LOGIQUE ZONES & GHOSTS (VISUEL)
+    # =========================================================================
+
+    def _update_ghosts(self, mouse_pos):
+        """Met à jour la position du fantôme et le trou dans la main."""
+        card = self.dragged_card_view.card
+
+        # 1. Détection zone survolée
+        self.hovered_zone_id = None
+        for z_id in self.valid_drop_zones:
+            zone = self.zones.get(z_id)
+            if zone and zone.rect.collidepoint(mouse_pos):
+                self.hovered_zone_id = z_id
+                break
+
+        # 2. Reset des zones
+        for zone in self.zones.values():
+            zone.clear_ghost()
+            zone.unignore_cards()
+
+        # 3. Création du trou dans la zone d'origine (Ignorer la carte draguée)
+        for zone in self.zones.values():
+            if card in zone.cards:
+                zone.ignore_card(card)
+                break
+
+        # 4. Ajout du fantôme dans la zone cible
+        if self.hovered_zone_id:
+            self.zones[self.hovered_zone_id].set_ghost(card)
+
+        # 5. Recalcul des positions des CardViews
+        self._update_card_positions_from_zones()
+
+    def _clear_ghosts(self):
+        for zone in self.zones.values():
+            zone.clear_ghost()
+            zone.unignore_cards()
+        self._update_card_positions_from_zones()
+
+    def _update_card_positions_from_zones(self):
+        """
+        Synchronise les rectangles des CardViews avec le layout calculé par les Zones.
+        Gère aussi la récupération du rect du fantôme pour le Renderer.
+        """
+        view_map = {cv.card: cv for cv in self.card_views}
+
+        for zone in self.zones.values():
+            layout_data = zone.get_card_rects()
+
+            for card_model, target_rect in layout_data:
+                # Est-ce le fantôme ?
+                is_ghost = (self.dragged_card_view and
+                            card_model == self.dragged_card_view.card and
+                            zone.id == self.hovered_zone_id)
+
+                if is_ghost:
+                    self.current_ghost_rect = target_rect
+                    continue
+
+                # Est-ce une carte réelle ?
+                if card_model in view_map:
+                    view_map[card_model].rect = target_rect
+                    # Mise à jour du point de retour si c'est la carte draguée
+                    if self.dragged_card_view and card_model == self.dragged_card_view.card:
+                        self.dragged_card_view.origin_pos = target_rect.topleft
+
+    # =========================================================================
+    #  HELPERS DE CONSTRUCTION UI
+    # =========================================================================
+
+    def _refresh_ui_components(self):
+        """Reconstruit entièrement les listes de widgets (Cartes & Boutons) selon l'état."""
         self.card_views.clear()
         self.ui_buttons.clear()
 
-        if self.show_confirm_menu:
-            self._create_confirm_buttons()
-
-        # 1. Visibilité (Fog of War)
-        debug = self.app.config.debug_mode
-        hide_p2 = True and not debug
-        hide_p1 = False
-
-        # On utilise le joueur visuel, pas juste actif
-        visual_idx = self._get_visual_player_idx()
-
-        if self.game_mode == "HOTSEAT":
-            # Si le focus est sur P2, on cache P1
-            if visual_idx == 1:
-                hide_p1 = True and not debug
-                hide_p2 = False
-            else:
-                hide_p2 = True and not debug
-                hide_p1 = False
-
-        # 2. Remplissage des Zones
         state = self.game.state
+
+        # 1. Configuration de la visibilité (Fog of War)
+        debug = self.app.config.debug_mode
+        visual_idx = self._get_visual_player_idx()
+        hide_p1, hide_p2 = False, True
+
+        if self.app.config.game_mode == "HOTSEAT":
+            # On cache le joueur inactif
+            hide_p1 = (visual_idx == 1) and not debug
+            hide_p2 = (visual_idx == 0) and not debug
+        else:
+            # PvE : On cache toujours P2 (IA), sauf en debug
+            hide_p2 = not debug
+
+        # 2. Injection dans les Zones
         self.zones["HAND_P1"].set_cards(state.player1.hand)
         self.zones["BOARD_P1"].set_cards(state.player1.board)
         self.zones["DISCARD_P1"].set_cards(state.player1.discard)
@@ -142,228 +415,253 @@ class GameScreen(BaseScreen):
         self.zones["DISCARD_P2"].set_cards(state.player2.discard)
         self.zones["DECK_P2"].set_cards(state.player2.deck)
 
-        # 3. Génération des Vues (CardView) depuis les Zones
+        # 3. Création des CardViews
         for zone_id, zone in self.zones.items():
-            # La zone calcule les positions (et gère le fantôme si actif)
             card_positions = zone.get_card_rects()
 
             is_hidden = False
-            if zone_id == "HAND_P2": is_hidden = hide_p2
-            if zone_id == "HAND_P1": is_hidden = hide_p1
-            if "DECK" in zone_id: is_hidden = True
+            if zone_id == "HAND_P1":
+                is_hidden = hide_p1
+            if zone_id == "HAND_P2":
+                is_hidden = hide_p2
+            if "DECK" in zone_id:
+                is_hidden = True
 
             for card, rect in card_positions:
-                cv = CardView(card, rect.x, rect.y, rect.width, rect.height, is_hidden=is_hidden)
+                cv = CardView(card, rect.x, rect.y, rect.width,
+                              rect.height, is_hidden=is_hidden)
 
-                # Metadata (ex: clic défausse)
+                # Metadata pour interaction défausse
                 if "DISCARD" in zone_id:
                     p = state.player1 if "P1" in zone_id else state.player2
                     cv.metadata = {"action": "VIEW_DISCARD", "player": p}
 
-                # Highlight Attaquant
+                # Feedback Attaquant
                 if card == state.pending_attacker:
                     cv.is_attacking = True
 
                 self.card_views.append(cv)
 
-        # 4. Overlays & UI
+        # 4. Overlays (Si sélection active ou inspection défausse)
         if state.active_request:
             self._create_selection_overlay_views()
         elif self.viewing_discard_pile:
             self._create_discard_inspection_views()
 
+        # 5. Highlights
         self._refresh_highlights()
+
+        # 6. Boutons UI (Passer, Mindbug, Menu)
         self._create_ui_buttons()
 
-    # =========================================================================
-    #  INPUT HANDLING (EVENTS)
-    # =========================================================================
+    def _create_ui_buttons(self):
+        font = self.app.res_manager.get_font(20, bold=True)
+        # Bouton Menu
+        self.ui_buttons.append(Button(self.width - 100, 20, 80, 40, "MENU", font, "CMD_MENU",
+                                      bg_color=BTN_SURFACE, text_color=TEXT_PRIMARY, hover_color=BTN_HOVER))
 
-    def handle_events(self, events):
-        for event in events:
-            # --- SHORTCUTS ---
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_d: self.show_debug_zones = not self.show_debug_zones
-                if event.key == pygame.K_ESCAPE:
-                    if self.error_message: return "MENU"
-                    if self.viewing_discard_pile: self.viewing_discard_pile = None; self._init_layout(); return
-                    if self.show_confirm_menu: self.show_confirm_menu = False; return
-                    if self.game.state.winner: return "MENU"
-                    self.show_confirm_menu = True;
-                    self._create_confirm_buttons();
-                    return
-
-            # --- MODALES (Priorité Haute) ---
-            if self.show_confirm_menu:
-                for btn in self.confirm_buttons:
-                    act = btn.handle_event(event)
-                    if act == "CONFIRM_YES": return "MENU"
-                    if act == "CONFIRM_NO": self.show_confirm_menu = False; return
-                continue  # On bloque le reste du jeu
-
-            if self.error_message:
-                for btn in self.error_buttons:
-                    if btn.handle_event(event) == "MENU": return "MENU"
-                continue
-
-            # --- BLOQUEURS ---
-            if self.game.state.winner: continue
-            if self.ai_thinking: continue
-
-            # Rideau Hotseat : Clic pour débloquer
-            if self.show_curtain:
-                if event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN:
-                    self.show_curtain = False
-                continue
-
-            # --- UI BOUTONS ---
-            # On traite les boutons AVANT les cartes
-            ui_handled = False
-            for btn in self.ui_buttons:
-                if btn.handle_event(event):
-                    self._handle_button_action(btn.action)
-                    ui_handled = True
-                    break
-            if ui_handled: continue
-
-            # --- INTERACTIONS CARTES (CLIC & DRAG) ---
-
-            # A. CLIC GAUCHE : DÉBUT DRAG OU CLIC SIMPLE
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # Si on est en mode "Choix" ou inspection, le Drag est interdit -> Clic forcé
-                is_res_phase = (self.game.state.phase == Phase.RESOLUTION_CHOICE)
-                if self.viewing_discard_pile or is_res_phase:
-                    self._handle_card_events(event)
-                    continue
-
-                # On cherche la carte sous la souris (Inversé pour attraper celle du dessus)
-                clicked_cv = None
-                for cv in reversed(self.card_views):
-                    if cv.rect.collidepoint(event.pos) and not cv.is_hidden and cv.visible:
-                        clicked_cv = cv
-                        break
-
-                if clicked_cv:
-                    # Est-ce une carte de MA MAIN ? (Seule zone draggable pour Jouer)
-                    is_in_hand = (clicked_cv.card in self.game.state.active_player.hand)
-
-                    if is_in_hand:
-                        # ... (Logique de Drag existante, on ne touche pas) ...
-                        self.dragged_card_view = clicked_cv
-                        clicked_cv.start_drag(event.pos)
-                        self.valid_drop_zones = self._calculate_valid_drop_zones(clicked_cv.card)
-                        self._update_zone_ghosts(origin_card=clicked_cv.card, hover_pos=event.pos)
-
-                    else:
-                        # >>> CLIC SIMPLE (ATTAQUE, EFFETS, DÉFAUSSE) <<<
-
-                        # CORRECTION ICI :
-                        # CardView.handle_event renvoie None sur un clic gauche (pour éviter conflit drag).
-                        # On doit donc déclencher l'action manuellement ici.
-
-                        # 1. Cas spécial : Inspection d'une pile de défausse
-                        if hasattr(clicked_cv, 'metadata') and clicked_cv.metadata and clicked_cv.metadata.get(
-                                "action") == "VIEW_DISCARD":
-                            player = clicked_cv.metadata["player"]
-                            self.viewing_discard_pile = player.discard
-                            self.viewing_discard_owner_name = player.name
-                            self._init_layout()
-
-                        # 2. Cas général : Interaction de jeu (Attaquer / Sélectionner)
-                        else:
-                            self._try_play_card(clicked_cv.card)
-
-            # B. CLIC GAUCHE RELÂCHÉ : FIN DU DRAG (DROP)
-            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                if self.dragged_card_view:
-                    card_view = self.dragged_card_view
-                    card_view.stop_drag()  # Visuellement, la carte revient à sa position (origin)
-
-                    drop_zone_id = self.hovered_zone_id
-
-                    # 3. Nettoyage des fantômes (Reset visuel)
-                    self._clear_all_ghosts()
-
-                    # 4. Action Moteur
-                    from mindbug_gui.controller import InputHandler
-                    action = InputHandler.handle_drag_drop(self.game, card_view.card, drop_zone_id)
-
-                    if action:
-                        # DROP VALIDE
-                        if action[0] == "RESOLVE_SELECTION":
-                            self.game.resolve_selection_effect(action[1])
-                        else:
-                            self.game.step(action[0], action[1])
-                        self._init_layout()  # Refresh total du plateau
-                    else:
-                        # DROP INVALIDE (ou petit clic maladroit)
-                        # Si on a à peine bougé, on considère que c'est un clic "Jouer" classique
-                        dist = (event.pos[0] - card_view.origin_pos[0]) ** 2 + (
-                                    event.pos[1] - card_view.origin_pos[1]) ** 2
-                        if dist < 100:
-                            self._try_play_card(card_view.card)
-                        else:
-                            # C'était un drag annulé -> Retour élastique (géré par stop_drag + refresh layout)
-                            self._update_card_positions_from_zones()
-
-                    # Reset états
-                    self.dragged_card_view = None
-                    self.valid_drop_zones = []
-                    self.hovered_zone_id = None
-
-            # C. SOURIS BOUGE : UPDATE DRAG & GHOST
-            elif event.type == pygame.MOUSEMOTION:
-                if self.dragged_card_view:
-                    self.dragged_card_view.update_drag_position(event.pos)
-
-                    # On utilise le centre de la carte pour détecter le survol
-                    center = self.dragged_card_view.rect.center
-                    self._update_hovered_zone(center)
-                    self._update_zone_ghosts(origin_card=self.dragged_card_view.card, hover_pos=center)
-
-            # D. CLIC DROIT (ZOOM)
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                for cv in reversed(self.card_views):
-                    if cv.rect.collidepoint(event.pos):
-                        if cv.is_hidden:
-                            break
-
-                        res = cv.handle_event(event)
-                        if res and res[0] == "ZOOM_CARD": self.zoomed_card = res[1]
-                        break
-            if event.type == pygame.MOUSEBUTTONUP and event.button == 3:
-                self.zoomed_card = None
-
-        return None
-
-    # =========================================================================
-    #  LOGIC & UPDATES
-    # =========================================================================
-
-    def update(self, dt):
-        if self.error_message:
-            mouse_pos = pygame.mouse.get_pos()
-            for btn in self.error_buttons: btn.update(dt, mouse_pos)
+        # Bouton Spécial Hunter
+        req = self.game.state.active_request
+        if req and req.reason == "HUNTER_TARGET":
+            cx = self.width // 2
+            cy = self.height - 130
+            self.ui_buttons.append(Button(cx - 100, cy, 200, 50, "ATTAQUE NORMALE", font, "SKIP_HUNTER",
+                                          bg_color=BTN_PASS, hover_color=BTN_HOVER))
             return
 
-        self._update_ai()
+        # Boutons de Jeu (Mindbug, Pass, No Block)
+        is_human_turn = not (self.app.config.game_mode ==
+                             "PVE" and self.game.state.active_player_idx == 1)
+        if is_human_turn and not self.game.state.winner:
+            legal_moves = self.game.get_legal_moves()
 
-        # Gestion Rideau Hotseat
-        if self.game_mode == "HOTSEAT" and not self.game.state.winner:
-            current_visual_idx = self._get_visual_player_idx()
+            # Mapping des types de coups vers les boutons
+            has_mindbug = any(m[0] == "MINDBUG" for m in legal_moves)
+            has_pass = any(m[0] == "PASS" for m in legal_moves)
+            has_no_block = any(m[0] == "NO_BLOCK" for m in legal_moves)
 
-            if current_visual_idx != self.last_active_idx:
+            btn_w, btn_h = 160, 50
+            cx = self.width - btn_w - 20
+            current_y = self.height // 2 - 60
+            spacing = 60
+
+            if has_mindbug:
+                self.ui_buttons.append(Button(cx, current_y, btn_w, btn_h, "MINDBUG !", font, "CMD_MINDBUG",
+                                              bg_color=BTN_MINDBUG, hover_color=BTN_HOVER))
+                current_y += spacing
+
+            if has_no_block:
+                self.ui_buttons.append(Button(cx, current_y, btn_w, btn_h, "PAS DE BLOCK", font, "CMD_NO_BLOCK",
+                                              bg_color=BTN_DANGER, hover_color=BTN_HOVER))
+                current_y += spacing
+
+            if has_pass:
+                self.ui_buttons.append(Button(cx, current_y, btn_w, btn_h, "PASSER", font, "CMD_PASS",
+                                              bg_color=BTN_PASS, hover_color=BTN_HOVER))
+
+    def _refresh_highlights(self):
+        """Marque visuellement les cartes avec lesquelles une interaction est possible."""
+        if self.game.state.winner:
+            return
+        # On ne highlight rien pendant le tour IA
+        if self.app.config.game_mode == "PVE" and self.game.state.active_player_idx == 1:
+            return
+
+        moves = self.game.get_legal_moves()
+        req = self.game.state.active_request
+        ap = self.game.state.active_player
+
+        valid_cards = set()
+
+        for move in moves:
+            action, idx = move[0], move[1]
+            if action == "PLAY" and 0 <= idx < len(ap.hand):
+                valid_cards.add(ap.hand[idx])
+            elif action in ["ATTACK", "BLOCK"] and 0 <= idx < len(ap.board):
+                valid_cards.add(ap.board[idx])
+
+        # Highlight des cibles de sélection
+        if req:
+            for c in req.candidates:
+                valid_cards.add(c)
+
+        for cv in self.card_views:
+            if cv.card in valid_cards:
+                cv.is_highlighted = True
+
+    # =========================================================================
+    #  OVERLAYS & MODALES
+    # =========================================================================
+
+    def _create_selection_overlay_views(self):
+        """Crée des vues temporaires pour afficher un choix (ex: inspection défausse)."""
+        req = self.game.state.active_request
+        if not req or not req.candidates:
+            return
+
+        # Si la sélection concerne des cartes hors plateau (ex: défausse), on crée un overlay
+        first = req.candidates[0]
+        in_discard = any(first in p.discard for p in self.game.state.players)
+
+        if in_discard:
+            self._create_overlay_grid(req.candidates)
+
+    def _create_discard_inspection_views(self):
+        if self.viewing_discard_pile:
+            self._create_overlay_grid(self.viewing_discard_pile)
+
+    def _create_overlay_grid(self, cards):
+        # Utilitaire pour disposer des cartes en grille centrée (Overlay)
+        # Similaire à l'ancien code, mais ajoute les CardViews à self.card_views
+        # ... (Logique de grille standard) ...
+        # Pour simplifier ici, je reprends la logique de l'ancien fichier
+        count = len(cards)
+        if count == 0:
+            return
+
+        h = self.height * 0.22
+        w = h * 0.714
+        gap = 10
+        total_w = count * w + (count - 1) * gap
+        start_x = (self.width - total_w) // 2
+        y = (self.height - h) // 2
+
+        for i, card in enumerate(cards):
+            x = start_x + i * (w + gap)
+            cv = CardView(card, x, y, w, h)
+            # Si c'est une sélection active, on highlight
+            if self.game.state.active_request and card in self.game.state.active_request.candidates:
+                cv.is_highlighted = True
+            self.card_views.append(cv)
+
+    def _init_error_ui(self):
+        self.error_buttons = [
+            Button(self.width // 2 - 100, self.height // 2 + 60, 200, 50,
+                   "RETOUR MENU", self.app.res_manager.get_font(24), "MENU",
+                   bg_color=BTN_DANGER, hover_color=BTN_HOVER)
+        ]
+
+    def _open_confirm_menu(self):
+        self.show_confirm_menu = True
+        cx, cy = self.width // 2, self.height // 2
+        font = self.app.res_manager.get_font(24)
+        self.confirm_buttons = [
+            Button(cx - 110, cy + 20, 100, 50, "OUI", font,
+                   "CONFIRM_YES", bg_color=BTN_DANGER, hover_color=BTN_HOVER),
+            Button(cx + 10, cy + 20, 100, 50, "NON", font, "CONFIRM_NO",
+                   bg_color=BTN_SURFACE, hover_color=BTN_HOVER)
+        ]
+
+    # =========================================================================
+    #  UTILS INTERNES
+    # =========================================================================
+
+    def _execute_game_step(self, action):
+        self.game.step(action[0], action[1])
+        self._refresh_ui_components()
+
+    def _handle_escape(self):
+        if self.error_message:
+            return "MENU"
+        if self.viewing_discard_pile:
+            self.viewing_discard_pile = None
+            self._refresh_ui_components()
+            return None
+        if self.show_confirm_menu:
+            self.show_confirm_menu = False
+            return None
+        if self.game.state.winner:
+            return "MENU"
+        self._open_confirm_menu()
+        return None
+
+    def _handle_modal_events(self, event, buttons):
+        for btn in buttons:
+            act = btn.handle_event(event)
+            if act:
+                return act
+        return None
+
+    def _handle_right_click(self, event):
+        for cv in reversed(self.card_views):
+            if cv.rect.collidepoint(event.pos) and not cv.is_hidden:
+                self.zoomed_card = cv.card
+                break
+
+    def _get_card_view_under_mouse(self, pos):
+        for cv in reversed(self.card_views):
+            if cv.rect.collidepoint(pos) and not cv.is_hidden and cv.visible:
+                return cv
+        return None
+
+    def _open_discard_pile(self, player):
+        self.viewing_discard_pile = player.discard
+        self.viewing_discard_owner_name = player.name
+        self._refresh_ui_components()
+
+    def _check_hotseat_curtain(self):
+        if self.app.config.game_mode == "HOTSEAT" and not self.game.state.winner:
+            visual_idx = self._get_visual_player_idx()
+            if visual_idx != self.last_active_idx:
                 self.show_curtain = True
-                self.last_active_idx = current_visual_idx
+                self.last_active_idx = visual_idx
                 self.viewing_discard_pile = None
-                self._init_layout()
+                self._refresh_ui_components()
 
-        mouse_pos = pygame.mouse.get_pos()
-        widgets = self.confirm_buttons if self.show_confirm_menu else (self.card_views + self.ui_buttons)
-        for w in widgets: w.update(dt, mouse_pos)
+    def _get_visual_player_idx(self):
+        """Retourne l'index du joueur qui doit avoir le focus à l'écran."""
+        idx = self.game.state.active_player_idx
+        req = self.game.state.active_request
+        if req and self.game.state.phase == Phase.RESOLUTION_CHOICE:
+            if req.selector == self.game.state.player1:
+                return 0
+            elif req.selector == self.game.state.player2:
+                return 1
+        return idx
 
     def _update_ai(self):
-        is_ai_turn = (self.game_mode == "PVE" and self.game.state.active_player_idx == 1)
+        is_ai_turn = (self.app.config.game_mode ==
+                      "PVE" and self.game.state.active_player_idx == 1)
         if is_ai_turn and not self.game.state.winner:
             if not self.ai_thinking:
                 self.ai_thinking = True
@@ -376,566 +674,8 @@ class GameScreen(BaseScreen):
                 self.ai_thinking = False
                 if move:
                     try:
-                        self.game.step(move[0], move[1] if len(move) > 1 else None)
-                        self._init_layout()
+                        self.game.step(move[0], move[1]
+                                       if len(move) > 1 else None)
+                        self._refresh_ui_components()
                     except Exception as e:
                         log_error(f"⚠️ Erreur IA : {e}")
-
-    def _run_ai_thread(self):
-        try:
-            time.sleep(1.0)
-            game_clone = deepcopy(self.game)
-            self.ai_thread_result = self.ai_agent.get_action(game_clone)
-        except Exception:
-            self.ai_thread_result = ("PASS", -1)
-
-    # =========================================================================
-    #  DRAG & DROP HELPERS (GHOSTS & ZONES)
-    # =========================================================================
-
-    def _calculate_valid_drop_zones(self, card) -> List[str]:
-        """
-        Détermine où la carte peut être lâchée (Uniquement depuis la main).
-        """
-        valid = []
-        moves = self.game.get_legal_moves()
-        ap = self.game.state.active_player
-
-        # Détection dynamique du "Board Allié"
-        is_p1 = (ap == self.game.state.player1)
-        my_board = "BOARD_P1" if is_p1 else "BOARD_P2"
-
-        # Si la carte est dans la main, on peut la jouer sur son plateau
-        if card in ap.hand:
-            try:
-                idx = ap.hand.index(card)
-                if ("PLAY", idx) in moves:
-                    valid.append(my_board)
-            except ValueError:
-                pass
-
-        return list(set(valid))
-
-    def _update_hovered_zone(self, mouse_pos):
-        """Identifie la zone valide sous la souris."""
-        self.hovered_zone_id = None
-        for z_id in self.valid_drop_zones:
-            zone = self.zones.get(z_id)
-            if zone and zone.rect.collidepoint(mouse_pos):
-                self.hovered_zone_id = z_id
-                break
-
-    def _update_zone_ghosts(self, origin_card, hover_pos):
-        """
-        Met à jour l'état des zones (Trou + Fantôme).
-        """
-        # 1. Reset
-        for zone in self.zones.values():
-            zone.clear_ghost()
-            zone.unignore_cards()
-
-        # 2. Créer un trou dans la main (Ignorer la carte draguée)
-        for zone in self.zones.values():
-            if origin_card in zone.cards:
-                zone.ignore_card(origin_card)
-                break
-
-        # 3. Ajouter le fantôme dans la zone cible
-        if self.hovered_zone_id:
-            target_zone = self.zones[self.hovered_zone_id]
-            target_zone.set_ghost(origin_card)
-
-        # 4. Appliquer aux vues
-        self._update_card_positions_from_zones()
-
-    def _clear_all_ghosts(self):
-        """Nettoie tous les états fantômes."""
-        for zone in self.zones.values():
-            zone.clear_ghost()
-            zone.unignore_cards()
-        self._update_card_positions_from_zones()
-
-    def _update_card_positions_from_zones(self):
-        """
-        Met à jour la position réelle (rect) des widgets CardView
-        en fonction du layout calculé par les Zones.
-        """
-        view_map = {cv.card: cv for cv in self.card_views}
-
-        for zone in self.zones.values():
-            # La zone recalcule les positions (avec trou et fantôme)
-            layout_data = zone.get_card_rects()
-
-            for card_model, target_rect in layout_data:
-                # Cas 1 : C'est le fantôme
-                is_ghost = (self.dragged_card_view and
-                            card_model == self.dragged_card_view.card and
-                            zone.id == self.hovered_zone_id)
-
-                if is_ghost:
-                    self.current_ghost_rect = target_rect
-                    continue
-
-                # Cas 2 : C'est une carte normale
-                if card_model in view_map:
-                    # Téléportation visuelle (les cartes s'écartent)
-                    view_map[card_model].rect = target_rect
-
-                    # Si c'est la carte draguée (vue dans sa zone d'origine), on met à jour son point de retour
-                    if self.dragged_card_view and card_model == self.dragged_card_view.card:
-                        self.dragged_card_view.origin_pos = target_rect.topleft
-
-    # =========================================================================
-    #  DRAW
-    # =========================================================================
-
-    def draw(self, surface):
-        surface.fill(BG_COLOR)
-
-        if self.error_message: self._draw_error_modal(surface); return
-        if self.show_curtain: self._draw_curtain(surface); return
-
-        self._draw_hud(surface)
-        self._draw_pile_counts(surface)
-
-        # Overlays
-        if self.game.state.active_request or self.viewing_discard_pile:
-            self._draw_overlay_bg(surface)
-
-        # 1. Feedback Fantôme (Sous les cartes)
-        if self.dragged_card_view and self.hovered_zone_id and hasattr(self, 'current_ghost_rect'):
-            self._draw_ghost_placeholder(surface)
-
-        # 2. Cartes Statiques (Toutes SAUF celle qu'on drag)
-        for w in self.card_views:
-            if w != self.dragged_card_view:
-                w.draw(surface)
-
-        # 3. Carte Drag (Dessinée en dernier / au-dessus)
-        if self.dragged_card_view:
-            self.dragged_card_view.draw(surface)
-
-        # UI & Popups
-        for btn in self.ui_buttons: btn.draw(surface)
-        if self.show_confirm_menu: self._draw_confirm_modal(surface)
-        if self.ai_thinking: self._draw_ai_loader(surface)
-
-        if self.game.state.pending_card and not self.game.state.winner:
-            self._draw_pending_card_zoom(surface, self.game.state.pending_card)
-        if self.zoomed_card: self._draw_zoomed_overlay(surface, self.zoomed_card)
-        if self.game.state.winner: self._draw_winner_overlay(surface)
-
-        if self.show_debug_zones: self._draw_debug_zones(surface)
-
-    def _draw_ghost_placeholder(self, surface):
-        if not self.hovered_zone_id: return
-        rect = self.current_ghost_rect
-        if not rect: return
-
-        # Couleur (Vert = OK)
-        color = (100, 255, 100)  # Vert Mindbug
-
-        s = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
-        s.fill((*color, 80))  # Semi-transparent
-        surface.blit(s, rect)
-        pygame.draw.rect(surface, color, rect, 2, border_radius=8)
-
-    # =========================================================================
-    #  HELPERS UI & UTILS
-    # =========================================================================
-
-    def _init_error_ui(self):
-        self.error_buttons.clear()
-        font = self.app.res_manager.get_font(24, bold=True)
-        cx, cy = self.width // 2, self.height // 2
-        self.error_buttons.append(Button(
-            cx - 100, cy + 60, 200, 50, "RETOUR MENU", font, "MENU",
-            bg_color=BTN_DANGER, hover_color=BTN_HOVER
-        ))
-
-    def _create_confirm_buttons(self):
-        self.confirm_buttons.clear()
-        font = self.app.res_manager.get_font(24, bold=True)
-        cx, cy = self.width // 2, self.height // 2
-        self.confirm_buttons.append(
-            Button(cx - 110, cy + 20, 100, 50, "OUI", font, "CONFIRM_YES", bg_color=BTN_DANGER, hover_color=BTN_HOVER))
-        self.confirm_buttons.append(
-            Button(cx + 10, cy + 20, 100, 50, "NON", font, "CONFIRM_NO", bg_color=BTN_SURFACE, hover_color=BTN_HOVER))
-
-    def _create_ui_buttons(self):
-        font = self.app.res_manager.get_font(20, bold=True)
-        self.ui_buttons.append(Button(self.width - 100, 20, 80, 40, "MENU", font, "CMD_MENU", bg_color=BTN_SURFACE,
-                                      text_color=TEXT_PRIMARY, hover_color=BTN_HOVER))
-
-        # Bouton Spécial Hunter : décide d'attaquer normalement (pas viser)
-        req = self.game.state.active_request
-        if req and req.reason == "HUNTER_TARGET":
-            cx = self.width // 2
-            cy = self.height - 130  # Juste au-dessus de la main
-            self.ui_buttons.append(
-                Button(cx - 100, cy, 200, 50, "ATTAQUE NORMALE", font, "SKIP_HUNTER",
-                       bg_color=BTN_PASS, hover_color=BTN_HOVER)
-            )
-            return  # Pas d'autres boutons (Mindbug/Pass) pendant cette phase
-
-        is_human_turn = not (self.game_mode == "PVE" and self.game.state.active_player_idx == 1)
-        if is_human_turn and not self.game.state.winner:
-            legal_moves = self.game.get_legal_moves()
-            btn_w, btn_h = 160, 50
-            cx = self.width - btn_w - 20
-            cy_start = self.height // 2
-            spacing = 60
-            current_y = cy_start - spacing
-
-            has_mindbug = any(m[0] == "MINDBUG" for m in legal_moves)
-            has_pass = any(m[0] == "PASS" for m in legal_moves)
-            has_no_block = any(m[0] == "NO_BLOCK" for m in legal_moves)
-
-            if has_mindbug:
-                action = self._find_move_action(legal_moves, "MINDBUG")
-                self.ui_buttons.append(
-                    Button(cx, current_y, btn_w, btn_h, "MINDBUG !", font, action, bg_color=BTN_MINDBUG,
-                           hover_color=BTN_HOVER))
-                current_y += spacing
-            if has_no_block:
-                action = self._find_move_action(legal_moves, "NO_BLOCK")
-                self.ui_buttons.append(
-                    Button(cx, current_y, btn_w, btn_h, "PAS DE BLOCK", font, action, bg_color=BTN_DANGER,
-                           hover_color=BTN_HOVER))
-                current_y += spacing
-            if has_pass:
-                action = self._find_move_action(legal_moves, "PASS")
-                self.ui_buttons.append(Button(cx, current_y, btn_w, btn_h, "PASSER", font, action, bg_color=BTN_PASS,
-                                              hover_color=BTN_HOVER))
-
-    def _find_move_action(self, moves, action_type):
-        for i, m in enumerate(moves):
-            if m[0] == action_type: return f"MOVE:{i}"
-        return ""
-
-    def _handle_button_action(self, action_id):
-        # 1. Gestion du Menu
-        if action_id == "CMD_MENU":
-            self.show_confirm_menu = True
-            self._create_confirm_buttons()
-            return
-
-        # Gestion du Skip Hunter
-        if action_id == "SKIP_HUNTER":
-            # On envoie l'objet sentinelle "NO_HUNT" au moteur
-            self.game.resolve_selection_effect("NO_HUNT")
-            self._init_layout()
-            return
-
-        # 2. Gestion des coups de jeu (Play, Attack, Pass...)
-        if action_id.startswith("MOVE:"):
-            idx = int(action_id.split(":")[1])
-            legal_moves = self.game.get_legal_moves()
-            if 0 <= idx < len(legal_moves):
-                move = legal_moves[idx]
-                self.game.step(move[0], move[1] if len(move) > 1 else None)
-                self._init_layout()
-
-    def _handle_card_events(self, event):
-        """
-        Gestion centralisée des clics sur les cartes pour les modes spéciaux
-        (Sélection de cible, Inspection de défausse, Zoom).
-        """
-        # On parcourt en inversé pour respecter l'ordre d'affichage (cliquer sur celle du dessus)
-        for cv in reversed(self.card_views):
-            # 1. On laisse le widget gérer (ex: Clic Droit / Zoom)
-            res = cv.handle_event(event)
-
-            # 2. FIX : Si c'est un Clic Gauche et que le widget l'a ignoré (comportement par défaut)
-            # On le détecte manuellement ici.
-            if not res and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if cv.rect.collidepoint(event.pos) and not cv.is_hidden and cv.visible:
-                    res = ("CLICK_CARD", cv.card)
-
-            # 3. Traitement de l'action
-            if res:
-                evt_type, card_obj = res
-
-                # Cas A : Clic sur une pile de défausse (pour l'ouvrir)
-                if hasattr(cv, 'metadata') and cv.metadata and cv.metadata.get("action") == "VIEW_DISCARD":
-                    player = cv.metadata["player"]
-                    self.viewing_discard_pile = player.discard
-                    self.viewing_discard_owner_name = player.name
-                    self._init_layout()
-                    return  # Stop propagation
-
-                # Cas B : Zoom (Clic Droit)
-                if evt_type == "ZOOM_CARD":
-                    if not cv.is_hidden:
-                        self.zoomed_card = card_obj
-
-                # Cas C : Validation d'un choix (Clic Gauche)
-                elif evt_type == "CLICK_CARD":
-                    self._try_play_card(card_obj)
-
-                # Si on a trouvé une carte, on arrête de chercher (on ne clique pas à travers)
-                break
-
-    def _try_play_card(self, card_obj):
-        moves = self.game.get_legal_moves()
-        for move in moves:
-            action, idx = move[0], move[1]
-            if action == "PLAY":
-                if self.game.state.active_player.hand[idx] == card_obj: self.game.step(action,
-                                                                                       idx); self._init_layout(); return
-            elif action in ["ATTACK", "BLOCK"]:
-                if self.game.state.active_player.board[idx] == card_obj: self.game.step(action,
-                                                                                        idx); self._init_layout(); return
-            elif action.startswith("SELECT_"):
-                req = self.game.state.active_request
-                if req and card_obj in req.candidates:
-                    self.game.resolve_selection_effect(card_obj)
-                    self._init_layout()
-                    return
-
-    def _refresh_highlights(self):
-        for cv in self.card_views: cv.is_highlighted = False
-        if self.game.state.winner or (self.game_mode == "PVE" and self.game.state.active_player_idx == 1): return
-        legal_moves = self.game.get_legal_moves()
-        ap = self.game.state.active_player
-        req = self.game.state.active_request
-        for move in legal_moves:
-            action, idx = move[0], move[1]
-            target_card = None
-            if action == "PLAY" and 0 <= idx < len(ap.hand):
-                target_card = ap.hand[idx]
-            elif action in ["ATTACK", "BLOCK"] and 0 <= idx < len(ap.board):
-                target_card = ap.board[idx]
-            elif action.startswith("SELECT_") and req:
-                for cv in self.card_views:
-                    if cv.card in req.candidates:
-                        cv.is_highlighted = True
-            if target_card:
-                for cv in self.card_views:
-                    if cv.card == target_card: cv.is_highlighted = True
-
-    # --- DRAW UTILS ---
-    def _draw_overlay_bg(self, surface):
-        """Dessine le fond sombre uniquement si on est en mode 'Inspection' (Overlay actif)."""
-
-        # On n'affiche le fond noir que si on regarde une défausse ou si l'overlay de sélection a généré des cartes
-        # (c'est-à-dire, si le nombre de card_views est supérieur aux cartes du plateau/main standard)
-        # Mais plus simplement : on l'affiche si on a explicitly activé l'inspection de défausse
-        # OU si la requête active concerne la défausse.
-
-        should_draw = False
-
-        if self.viewing_discard_pile:
-            should_draw = True
-        elif self.game.state.active_request:
-            # On vérifie si on a généré des cartes "en plus" (overlay)
-            # Astuce : Les cartes de l'overlay sont ajoutées à la fin de self.card_views dans _create_overlay_grid
-            # Si on a appelé _create_overlay_grid, on veut le fond noir.
-
-            # On réutilise la logique de détection de zone
-            req = self.game.state.active_request
-            if req.candidates:
-                first = req.candidates[0]
-                for p in self.game.state.players:
-                    if first in p.discard:
-                        should_draw = True
-                        break
-
-        if should_draw:
-            ov = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            ov.fill((0, 0, 0, 200))
-            surface.blit(ov, (0, 0))
-
-            font = self.app.res_manager.get_font(30, bold=True)
-            title = "DÉFAUSSE" if self.viewing_discard_pile else "CHOISISSEZ UNE CARTE"
-            if self.viewing_discard_owner_name:
-                title += f" DE {self.viewing_discard_owner_name}"
-
-            txt = font.render(title, True, TEXT_PRIMARY)
-            surface.blit(txt, txt.get_rect(center=(self.width // 2, 80)))
-
-    def _draw_pile_counts(self, surface):
-        font = self.app.res_manager.get_font(24, bold=True)
-        h_card = self.height * layout.CARD_HEIGHT_PERCENT
-        w_card = h_card * layout.CARD_ASPECT_RATIO
-        margin_x = self.width * layout.PILE_MARGIN_PERCENT
-        if self.game.state.player1.deck:
-            count = len(self.game.state.player1.deck)
-            cx = self.width - margin_x - (w_card / 2)
-            cy = (self.height * layout.P1_PILE_Y_PERCENT) + (h_card / 2)
-            surface.blit(font.render(str(count), True, TEXT_PRIMARY),
-                         font.render(str(count), True, TEXT_PRIMARY).get_rect(center=(cx, cy)))
-        if self.game.state.player2.deck:
-            count = len(self.game.state.player2.deck)
-            cx = self.width - margin_x - (w_card / 2)
-            cy = (self.height * layout.P2_PILE_Y_PERCENT) + (h_card / 2)
-            surface.blit(font.render(str(count), True, TEXT_PRIMARY),
-                         font.render(str(count), True, TEXT_PRIMARY).get_rect(center=(cx, cy)))
-
-    def _draw_hud(self, surface):
-        font = self.app.res_manager.get_font(24, bold=True)
-        raw_phase = self.game.state.phase
-        phase_name = raw_phase.name if hasattr(raw_phase, "name") else str(raw_phase)
-        surface.blit(font.render(f"PHASE: {phase_name}", True, TEXT_PRIMARY), (20, 20))
-        p1, p2 = self.game.state.player1, self.game.state.player2
-        col_p2 = STATUS_CRIT if self.game.state.active_player_idx == 1 else TEXT_SECONDARY
-        surface.blit(font.render(f"{p2.name} | PV: {p2.hp} | MB: {p2.mindbugs}", True, col_p2), (120, 60))
-        col_p1 = STATUS_OK if self.game.state.active_player_idx == 0 else TEXT_SECONDARY
-        surface.blit(font.render(f"{p1.name} | PV: {p1.hp} | MB: {p1.mindbugs}", True, col_p1), (120, self.height - 40))
-
-    def _draw_curtain(self, surface):
-        surface.fill(BG_COLOR)
-        font = self.app.res_manager.get_font(50, bold=True)
-        txt = font.render(f"TOUR DE {self.game.state.active_player.name}", True, ACCENT)
-        surface.blit(txt, txt.get_rect(center=(self.width // 2, self.height // 2)))
-        sub = self.app.res_manager.get_font(24).render("(Cliquez pour révéler)", True, TEXT_SECONDARY)
-        surface.blit(sub, sub.get_rect(center=(self.width // 2, self.height // 2 + 50)))
-
-    def _draw_ai_loader(self, surface):
-        rect = pygame.Rect(self.width - 200, 10, 180, 40)
-        pygame.draw.rect(surface, BTN_SURFACE, rect, border_radius=10)
-        pygame.draw.rect(surface, ACCENT, rect, 2, border_radius=10)
-        txt = self.app.res_manager.get_font(20).render("L'IA réfléchit...", True, TEXT_PRIMARY)
-        surface.blit(txt, txt.get_rect(center=rect.center))
-
-    def _draw_pending_card_zoom(self, surface, card):
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        surface.blit(overlay, (0, 0))
-        zw = int(self.height * 0.4 * layout.CARD_ASPECT_RATIO)
-        zh = int(self.height * 0.4)
-        cx, cy = self.width // 2, self.height // 2
-        font = self.app.res_manager.get_font(40, bold=True)
-        lbl = font.render("CARTE JOUÉE", True, ACCENT)
-        surface.blit(lbl, lbl.get_rect(center=(cx, cy - zh // 2 - 40)))
-        temp_cv = CardView(card, cx - zw // 2, cy - zh // 2, zw, zh)
-        temp_cv.draw(surface)
-
-    def _draw_zoomed_overlay(self, surface, card):
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))
-        surface.blit(overlay, (0, 0))
-        zoom_factor = getattr(layout, 'ZOOM_FACTOR', 2.0)
-        zw = int(self.height * layout.CARD_HEIGHT_PERCENT * zoom_factor * layout.CARD_ASPECT_RATIO)
-        zh = int(self.height * layout.CARD_HEIGHT_PERCENT * zoom_factor)
-        cx, cy = self.width // 2, self.height // 2
-        temp_cv = CardView(card, cx - zw // 2, cy - zh // 2, zw, zh)
-        temp_cv.draw(surface)
-
-    def _draw_winner_overlay(self, surface):
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 220))
-        surface.blit(overlay, (0, 0))
-        winner_name = self.game.state.winner.name
-        font = self.app.res_manager.get_font(60, bold=True)
-        color = STATUS_OK if winner_name == "P1" else STATUS_CRIT
-        txt = font.render(f"VICTOIRE : {winner_name} !", True, color)
-        surface.blit(txt, txt.get_rect(center=(self.width // 2, self.height // 2)))
-        sub = self.app.res_manager.get_font(24).render("Appuyez sur ECHAP pour quitter", True, TEXT_PRIMARY)
-        surface.blit(sub, sub.get_rect(center=(self.width // 2, self.height // 2 + 60)))
-
-    def _draw_confirm_modal(self, surface):
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        surface.blit(overlay, (0, 0))
-        box_w, box_h = 400, 200
-        cx, cy = self.width // 2, self.height // 2
-        rect = pygame.Rect(cx - box_w // 2, cy - box_h // 2, box_w, box_h)
-        pygame.draw.rect(surface, BTN_SURFACE, rect, border_radius=12)
-        pygame.draw.rect(surface, ACCENT, rect, 2, border_radius=12)
-        font = self.app.res_manager.get_font(30, bold=True)
-        txt = font.render("QUITTER LA PARTIE ?", True, TEXT_PRIMARY)
-        surface.blit(txt, txt.get_rect(center=(cx, cy - 40)))
-        for btn in self.confirm_buttons: btn.draw(surface)
-
-    def _draw_error_modal(self, surface):
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 220))
-        font_title = self.app.res_manager.get_font(40, bold=True)
-        font_msg = self.app.res_manager.get_font(20)
-        surface.blit(overlay, (0, 0))
-        txt_title = font_title.render("CONFIGURATION INVALIDE", True, STATUS_CRIT)
-        surface.blit(txt_title, txt_title.get_rect(center=(self.width // 2, self.height // 2 - 80)))
-        lines = self.error_message.split('\n')
-        y = self.height // 2 - 20
-        for line in lines:
-            txt_msg = font_msg.render(line, True, TEXT_PRIMARY)
-            surface.blit(txt_msg, txt_msg.get_rect(center=(self.width // 2, y)))
-            y += 30
-        for btn in self.error_buttons: btn.draw(surface)
-
-    def _draw_debug_zones(self, surface):
-        font = self.app.res_manager.get_font(20)
-        for z_id, zone in self.zones.items():
-            s = pygame.Surface((zone.rect.width, zone.rect.height), pygame.SRCALPHA)
-            color = (0, 255, 0, 50) if "P1" in z_id else (255, 0, 0, 50)
-            if "PLAY" in z_id: color = (0, 0, 255, 50)
-            s.fill(color)
-            surface.blit(s, zone.rect)
-            pygame.draw.rect(surface, (255, 255, 255), zone.rect, 2)
-            txt = font.render(z_id, True, (255, 255, 255))
-            surface.blit(txt, zone.rect.topleft)
-
-    def _create_selection_overlay_views(self):
-        """
-        Génère les vues pour la sélection.
-        Ne crée un overlay que si les cibles ne sont pas déjà visibles (ex: Défausse).
-        """
-        req = self.game.state.active_request
-        if not req or not req.candidates: return
-
-        # On regarde où se trouve la première carte candidate pour décider du mode d'affichage
-        first_candidate = req.candidates[0]
-
-        # Vérifions si les cartes sont dans une défausse
-        in_discard = False
-        for p in self.game.state.players:
-            if first_candidate in p.discard:
-                in_discard = True
-                break
-
-        # Si c'est dans la défausse, on crée l'overlay (comportement "Inspecter")
-        if in_discard:
-            self._create_overlay_grid(req.candidates)
-
-        # Sinon (Board ou Main), on ne fait RIEN ici.
-        # Les cartes existantes seront mises en surbrillance par _refresh_highlights().
-
-    def _create_discard_inspection_views(self):
-        if self.viewing_discard_pile: self._create_overlay_grid(self.viewing_discard_pile)
-
-    def _create_overlay_grid(self, cards: List[Card]):
-        if not cards: return
-        valid_cards = [c for c in cards if hasattr(c, "keywords")]
-        count = len(valid_cards)
-        if count == 0: return
-        h_c = self.height * layout.CARD_HEIGHT_PERCENT
-        w_c = h_c * layout.CARD_ASPECT_RATIO
-        gap = 10
-        total_w = count * w_c + (count - 1) * gap
-        start_x = (self.width - total_w) // 2
-        y = (self.height - h_c) // 2
-        for i, card in enumerate(valid_cards):
-            x = start_x + i * (w_c + gap)
-            cv = CardView(card, x, y, w_c, h_c)
-            if self.game.state.active_request and card in self.game.state.active_request.candidates:
-                cv.is_highlighted = True
-            self.card_views.append(cv)
-
-    def _get_visual_player_idx(self):
-        """
-        Retourne l'index du joueur qui doit avoir le focus à l'écran.
-        Gère le cas où un joueur doit répondre (Selection) pendant le tour de l'autre.
-        """
-        # Par défaut, c'est le joueur dont c'est le tour
-        idx = self.game.state.active_player_idx
-
-        # Surcharge si une requête de sélection est en cours (ex: Défausse adverse)
-        req = self.game.state.active_request
-        if req and self.game.state.phase == Phase.RESOLUTION_CHOICE:
-            if req.selector == self.game.state.player1:
-                return 0
-            elif req.selector == self.game.state.player2:
-                return 1
-
-        return idx

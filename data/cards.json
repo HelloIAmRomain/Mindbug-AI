@@ -334,7 +334,7 @@
         "type": "ADD_KEYWORD",
         "target": { "group": "SELF" },
         "condition": { "context": "IS_ALONE" },
-        "params": { "keyword": "FRENZY" }
+        "params": { "keywords": ["FRENZY"] }
       }
     ]
   },
