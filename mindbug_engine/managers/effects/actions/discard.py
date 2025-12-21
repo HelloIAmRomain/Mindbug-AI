@@ -1,5 +1,7 @@
 from typing import Any, Dict
 from mindbug_engine.managers.effects.base import EffectAction
+# AJOUT de l'import pour les logs
+from mindbug_engine.utils.logger import log_info
 
 
 class DiscardAction(EffectAction):
@@ -17,5 +19,9 @@ class DiscardAction(EffectAction):
         if target in card_owner.hand:
             card_owner.hand.remove(target)
             card_owner.discard.append(target)
+
+            log_info(f"   -> 🗑️ {card_owner.name} discards {target.name}")
+
             # Règle Mindbug : piocher pour compléter la main après une défausse forcée
+            # C'est ce qui rend l'effet "invisible" si on ne loggue pas l'action avant
             self.tm.refill_hand(card_owner)
