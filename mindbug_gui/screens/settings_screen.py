@@ -59,7 +59,8 @@ class SettingsScreen(BaseScreen):
         # 2. SÉLECTION DIFFICULTÉ (Bouton Cycle)
         curr_diff = self.config.ai_difficulty
         # On récupère les métadonnées visuelles (label, couleur)
-        ui_data = DIFFICULTY_UI_CONFIG.get(curr_diff, DIFFICULTY_UI_CONFIG[next(iter(DIFFICULTY_UI_CONFIG))])
+        ui_data = DIFFICULTY_UI_CONFIG.get(
+            curr_diff, DIFFICULTY_UI_CONFIG[next(iter(DIFFICULTY_UI_CONFIG))])
 
         btn_diff = Button(
             x=cx - 150, y=y, width=300, height=50,
@@ -73,7 +74,8 @@ class SettingsScreen(BaseScreen):
         self.widgets.append(btn_diff)
 
         # Description sous le bouton de difficulté
-        self.desc_surf = font_small.render(ui_data['desc'], True, TEXT_SECONDARY)
+        self.desc_surf = font_small.render(
+            ui_data['desc'], True, TEXT_SECONDARY)
         self.desc_rect = self.desc_surf.get_rect(center=(cx, y + 40))
         y += 90
 
@@ -101,7 +103,8 @@ class SettingsScreen(BaseScreen):
         y += spacing + 20
 
         # 4. GESTION DES EXTENSIONS (Sets)
-        self.sets_title_surf = font_sub.render("EXTENSIONS ACTIVES", True, ACCENT)
+        self.sets_title_surf = font_sub.render(
+            "EXTENSIONS ACTIVES", True, ACCENT)
         self.sets_title_rect = self.sets_title_surf.get_rect(center=(cx, y))
         y += spacing
 
@@ -110,7 +113,8 @@ class SettingsScreen(BaseScreen):
 
         if not avail:
             # Fallback si aucune donnée n'est chargée
-            self.widgets.append(Button(cx - 150, y, 300, 40, "Aucun Set Trouvé", font_widget, None))
+            self.widgets.append(
+                Button(cx - 150, y, 300, 40, "Aucun Set Trouvé", font_widget, None))
             y += spacing
         else:
             for s_id in avail:
@@ -202,7 +206,8 @@ class SettingsScreen(BaseScreen):
             if set_id in sets and len(sets) > 1:
                 sets.remove(set_id)
             else:
-                print("⚠️ Action refusée : Au moins un set de cartes doit rester actif.")
+                log_info(
+                    "⚠️ Action refusée : Au moins un set de cartes doit rester actif.")
 
     def _save_and_exit(self):
         """Persiste les paramètres via le ConfigurationService avant de quitter."""
@@ -228,5 +233,6 @@ class SettingsScreen(BaseScreen):
 
         # Footer versioning
         footer_font = self.res.get_font(14)
-        v_txt = footer_font.render("v4.0 - Configuration Centralisée", True, TEXT_SECONDARY)
+        v_txt = footer_font.render(
+            "v4.0 - Configuration Centralisée", True, TEXT_SECONDARY)
         surface.blit(v_txt, (15, self.height - 25))

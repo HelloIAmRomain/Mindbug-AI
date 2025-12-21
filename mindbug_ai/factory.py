@@ -1,6 +1,6 @@
 from mindbug_engine.core.consts import Difficulty
 from .interface import AgentInterface
-from .agent import HeuristicAgent
+from .mcts.agent import MCTSAgent
 
 
 class AgentFactory:
@@ -10,17 +10,24 @@ class AgentFactory:
         Crée l'agent.
         Args:
             difficulty: Enum Difficulty (EASY, MEDIUM, HARD) ou str compatible.
+            strategy: "MCTS".
         """
-        # Conversion robuste Str -> Enum
         if isinstance(difficulty, str):
             try:
                 difficulty = Difficulty(difficulty)
             except ValueError:
-                # Fallback sécurisé ou Crash (Fail Fast)
                 raise ValueError(f"❌ Difficulté inconnue : {difficulty}")
 
-        if strategy == "HEURISTIC":
-            return HeuristicAgent(difficulty=difficulty)
+        # Sélection de la stratégie
+        if strategy == "MCTS":
+            # On adapte le temps de réflexion selon la difficulté
+            time_budget = 0.5  # Easy
+            if difficulty == Difficulty.MEDIUM:
+                time_budget = 1.5
+            if difficulty == Difficulty.HARD:
+                time_budget = 3.0
+
+            return MCTSAgent(simulation_time=time_budget)
 
         else:
             raise ValueError(f"❌ Stratégie inconnue : {strategy}")

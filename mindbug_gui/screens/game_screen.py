@@ -51,8 +51,11 @@ class GameScreen(BaseScreen):
         # 2. IA (AGENT)
         self.ai_agent = None
         if self.app.config.game_mode == "PVE":
+            # On passe strategy="MCTS"
             self.ai_agent = AgentFactory.create_agent(
-                difficulty=self.app.config.ai_difficulty)
+                difficulty=self.app.config.ai_difficulty,
+                strategy="MCTS"
+            )
         self.ai_thinking = False
         self.ai_thread_result = None
 
@@ -679,3 +682,20 @@ class GameScreen(BaseScreen):
                         self._refresh_ui_components()
                     except Exception as e:
                         log_error(f"⚠️ Erreur IA : {e}")
+
+    def _run_ai_thread(self):
+        """Exécute la réflexion de l'IA dans un thread séparé."""
+        try:
+            # Petit délai pour laisser l'interface respirer (UX)
+            time.sleep(0.5)
+
+            # On clone le jeu pour que l'IA puisse simuler sans toucher au vrai état
+            game_clone = deepcopy(self.game)
+
+            # On demande à l'agent (MCTS ou Heuristic) de choisir une action
+            self.ai_thread_result = self.ai_agent.get_action(game_clone)
+
+        except Exception as e:
+            log_error(f"❌ CRASH IA Thread : {e}")
+            # En cas de panique, on passe le tour pour ne pas bloquer le jeu
+            self.ai_thread_result = ("PASS", -1)
