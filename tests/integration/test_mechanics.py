@@ -29,7 +29,7 @@ def test_mechanic_tough_survival(game):
 
 
 def test_mechanic_frenzy_double_attack(game):
-    """Test Fureur (Frenzy) V2."""
+    """Test Fureur (Frenzy) V2 avec Auto-Attack."""
     p1 = game.state.player1
     p2 = game.state.player2
 
@@ -45,31 +45,23 @@ def test_mechanic_frenzy_double_attack(game):
 
     # --- Attaque 1 ---
     game.step("ATTACK", 0)
-    game.step("BLOCK", 0)  # M1 bloque
+
+    # M1 bloque
+    # C'est ici que tout se joue : La résolution de ce blocage va déclencher
+    # la mort de M1 -> Fureur -> Auto-Attack -> Transition vers P2
+    game.step("BLOCK", 0)
 
     assert m1 in p2.discard
     assert frenzy_card in p1.board
 
-    # --- TRANSITION FUREUR ---
-    # L'Engine a rendu la main à P1 pour la 2ème attaque
-    assert game.state.phase == Phase.P1_MAIN
-    assert game.state.active_player == p1
-    assert game.state.frenzy_candidate == frenzy_card
+    # --- TRANSITION FUREUR (Automatique maintenant) ---
 
-    # On vérifie que le seul coup légal est d'attaquer
-    moves = game.get_legal_moves()
-    assert len(moves) == 1
-    assert moves[0] == ("ATTACK", 0)
-
-    # --- Attaque 2 ---
-    game.step("ATTACK", 0)  # P1 lance la 2ème attaque
-
-    # Maintenant on est en phase de blocage pour P2
     assert game.state.phase == Phase.BLOCK_DECISION
     assert game.state.active_player == p2
     assert game.state.pending_attacker == frenzy_card
 
-    # M2 bloque (Attention : M2 est devenu l'index 0 car M1 est mort)
+    # --- Attaque 2 (Résolution du blocage) ---
+    # M2 bloque (M2 est devenu l'index 0 car M1 est mort)
     game.step("BLOCK", 0)
 
     assert m2 in p2.discard

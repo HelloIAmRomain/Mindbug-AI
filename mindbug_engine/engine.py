@@ -1,7 +1,7 @@
 import random
 import traceback
 import copy
-import pickle  # <--- NOUVEL IMPORT CRUCIAL
+import pickle
 from typing import Optional, List, Tuple, Any
 
 from mindbug_engine.utils.logger import log_info, log_debug, log_error
@@ -83,7 +83,8 @@ class MindbugGame:
             return
 
         if self.verbose:
-            log_info(f"🎲 Démarrage de la partie... Deck: {len(self.state.deck)} cartes.")
+            log_info(
+                f"🎲 Démarrage de la partie... Deck: {len(self.state.deck)} cartes.")
 
         random.shuffle(self.state.deck)
 
@@ -91,8 +92,10 @@ class MindbugGame:
         self.state.player2.hand = []
 
         for _ in range(5):
-            if self.state.deck: self.state.player1.hand.append(self.state.deck.pop())
-            if self.state.deck: self.state.player2.hand.append(self.state.deck.pop())
+            if self.state.deck:
+                self.state.player1.hand.append(self.state.deck.pop())
+            if self.state.deck:
+                self.state.player2.hand.append(self.state.deck.pop())
 
         self.state.turn_count = 1
         self.state.active_player_idx = 0
@@ -134,17 +137,29 @@ class MindbugGame:
 
     def get_legal_moves(self) -> List[Tuple[str, int]]:
         self.update_board_states()
-        if self.state.winner: return []
+        if self.state.winner:
+            return []
 
         moves = []
         ap = self.state.active_player
         phase = self.state.phase
 
+        # --- FIX FRENZY (State Persistence) ---
         if self.state.frenzy_candidate:
-            if self.state.frenzy_candidate in ap.board:
-                idx = ap.board.index(self.state.frenzy_candidate)
-                return [("ATTACK", idx)]
+            # On vérifie si la carte est toujours en jeu (sur un board)
+            in_p1 = self.state.frenzy_candidate in self.state.player1.board
+            in_p2 = self.state.frenzy_candidate in self.state.player2.board
+
+            if in_p1 or in_p2:
+                owner = self.state.player1 if in_p1 else self.state.player2
+                # Si c'est à nous de jouer, on force l'attaque
+                if ap == owner:
+                    idx = ap.board.index(self.state.frenzy_candidate)
+                    return [("ATTACK", idx)]
+                # Sinon (tour adversaire pour bloquer), on garde le frenzy_candidate actif
+                # sans proposer de coup d'attaque pour le défenseur
             else:
+                # Carte disparue
                 self.state.frenzy_candidate = None
 
         if phase in [Phase.P1_MAIN, Phase.P2_MAIN]:
@@ -152,7 +167,8 @@ class MindbugGame:
             moves.extend([("ATTACK", i) for i in range(len(ap.board))])
         elif phase == Phase.MINDBUG_DECISION:
             moves.append(("PASS", -1))
-            if ap.mindbugs > 0: moves.append(("MINDBUG", -1))
+            if ap.mindbugs > 0:
+                moves.append(("MINDBUG", -1))
         elif phase == Phase.BLOCK_DECISION:
             moves.append(("NO_BLOCK", -1))
             attacker = self.state.pending_attacker
@@ -170,7 +186,8 @@ class MindbugGame:
                 # Helper pour ajouter les indices valides
                 def add_indices(collection, type_str):
                     for i, c in enumerate(collection):
-                        if c in req.candidates: moves.append((type_str, i))
+                        if c in req.candidates:
+                            moves.append((type_str, i))
 
                 add_indices(selector.hand, "SELECT_HAND")
                 add_indices(selector.board, "SELECT_BOARD")
@@ -182,7 +199,8 @@ class MindbugGame:
         return moves
 
     def ask_for_selection(self, candidates: List[Any], reason: str, count: int, selector: Player, callback=None):
-        self.query_manager.start_selection_request(candidates, reason, count, selector, callback)
+        self.query_manager.start_selection_request(
+            candidates, reason, count, selector, callback)
 
     def execute_mindbug_replay(self):
         log_info("🔄 REPLAY ! The original player draws and plays again.")
@@ -217,7 +235,8 @@ class MindbugGame:
 
     def resolve_combat(self, blocker: Optional[Card]):
         attacker = self.state.pending_attacker
-        if not attacker: return
+        if not attacker:
+            return
 
         self.combat_manager.resolve_fight(attacker, blocker)
         self.update_board_states()
@@ -229,17 +248,34 @@ class MindbugGame:
 
         self.state.pending_attacker = None
 
+        # Vérification victoire (Si l'attaque a tué le joueur, on arrête tout)
+        self.turn_manager.check_win_condition()
+        if self.state.winner:
+            return
+
         # Gestion Frenzy
         att_owner = self.state.player1 if attacker in self.state.player1.board else self.state.player2
         is_alive = attacker in att_owner.board
         has_frenzy = Keyword.FRENZY in attacker.keywords
 
+        # Si la carte est vivante, a Fureur et n'a pas encore utilisé son bonus (c'est la 1ère attaque)
         if is_alive and has_frenzy and self.state.frenzy_candidate != attacker:
             log_info(f"🔥 FRENZY ! {attacker.name} prepares to attack again.")
             self.state.frenzy_candidate = attacker
+
             # On redonne la main à l'attaquant
             self.turn_manager.switch_active_player()
             self.state.phase = Phase.P1_MAIN if self.state.active_player_idx == 0 else Phase.P2_MAIN
+
+            # --- AUTO ATTACK (Correction UX) ---
+            # On déclare immédiatement la seconde attaque pour éviter un clic inutile
+            try:
+                att_idx = att_owner.board.index(attacker)
+                log_info(f"⚡ Auto-Attack triggered for Frenzy.")
+                self.step("ATTACK", att_idx)
+            except ValueError:
+                log_error("CRITICAL: Frenzy attacker lost during processing.")
+
             return
 
         self.state.frenzy_candidate = None

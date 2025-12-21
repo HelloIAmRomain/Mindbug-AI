@@ -1,5 +1,5 @@
 import pygame
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Any, Dict
 
 from mindbug_engine.utils.logger import log_error
 # --- CORE & WIDGETS ---
@@ -31,10 +31,13 @@ class CardView(UIWidget):
         self.is_hidden = is_hidden
         self.visible = True
 
+        self.metadata: Dict[str, Any] = {}
+
         # --- ÉTATS DRAG & DROP (NOUVEAU) ---
         self.is_dragging = False
         self.origin_pos = (x, y)  # Position de retour si le drop échoue
-        self.drag_offset = (0, 0)  # Écart souris/coin pour un déplacement fluide
+        # Écart souris/coin pour un déplacement fluide
+        self.drag_offset = (0, 0)
 
         # États visuels (Pilotés par GameScreen)
         self.is_highlighted = False  # Coup légal / Jouable
@@ -58,7 +61,8 @@ class CardView(UIWidget):
         try:
             raw_img = self.res_manager.get_card_image(self.card)
             if raw_img:
-                self._cached_image = pygame.transform.smoothscale(raw_img, (self.rect.width, self.rect.height))
+                self._cached_image = pygame.transform.smoothscale(
+                    raw_img, (self.rect.width, self.rect.height))
         except Exception as e:
             log_error(f"⚠️ Erreur chargement image {self.card.name}: {e}")
             self._cached_image = None
@@ -69,13 +73,16 @@ class CardView(UIWidget):
 
     def start_drag(self, mouse_pos: Tuple[int, int]):
         """Commence le déplacement de la carte."""
-        if self.is_hidden: return  # On ne peut pas déplacer une carte cachée (ex: main adverse)
+        if self.is_hidden:
+            # On ne peut pas déplacer une carte cachée (ex: main adverse)
+            return
 
         self.is_dragging = True
         # On sauvegarde la position actuelle pour pouvoir y revenir (snap back)
         self.origin_pos = (self.rect.x, self.rect.y)
         # On calcule le décalage pour que la carte ne "saute" pas au centre de la souris
-        self.drag_offset = (self.rect.x - mouse_pos[0], self.rect.y - mouse_pos[1])
+        self.drag_offset = (
+            self.rect.x - mouse_pos[0], self.rect.y - mouse_pos[1])
 
     def update_drag_position(self, mouse_pos: Tuple[int, int]):
         """Met à jour la position pendant le mouvement."""
@@ -106,7 +113,8 @@ class CardView(UIWidget):
         Gère les clics (Zoom, etc.).
         Note: Le Drag & Drop est géré par le GameScreen, mais on garde le clic droit ici.
         """
-        if not self.visible: return None
+        if not self.visible:
+            return None
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.is_hovered:
@@ -119,7 +127,8 @@ class CardView(UIWidget):
 
     def draw(self, surface: pygame.Surface, override_power: Optional[int] = None):
         """Rendu complet de la carte."""
-        if not self.visible: return
+        if not self.visible:
+            return
 
         # --- 1. DOS DE CARTE (Si cachée) ---
         if self.is_hidden:
@@ -160,10 +169,12 @@ class CardView(UIWidget):
         pygame.draw.rect(surface, (30, 35, 45), self.rect, border_radius=8)
 
         name_txt = self.card.name
-        if len(name_txt) > 12: name_txt = name_txt[:10] + ".."
+        if len(name_txt) > 12:
+            name_txt = name_txt[:10] + ".."
 
         txt_surf = self.font_title.render(name_txt, True, TEXT_PRIMARY)
-        txt_rect = txt_surf.get_rect(midtop=(self.rect.centerx, self.rect.y + 10))
+        txt_rect = txt_surf.get_rect(
+            midtop=(self.rect.centerx, self.rect.y + 10))
         surface.blit(txt_surf, txt_rect)
 
         if self.card.keywords:
@@ -174,7 +185,8 @@ class CardView(UIWidget):
 
             k_str = " ".join(kw_list)
             k_surf = self.font_kw.render(k_str, True, TEXT_SECONDARY)
-            k_rect = k_surf.get_rect(midbottom=(self.rect.centerx, self.rect.bottom - 25))
+            k_rect = k_surf.get_rect(midbottom=(
+                self.rect.centerx, self.rect.bottom - 25))
             surface.blit(k_surf, k_rect)
 
     def _draw_borders(self, surface):
@@ -195,7 +207,8 @@ class CardView(UIWidget):
             border_col = TEXT_PRIMARY
             width = 2
 
-        pygame.draw.rect(surface, border_col, self.rect, width, border_radius=8)
+        pygame.draw.rect(surface, border_col, self.rect,
+                         width, border_radius=8)
 
     def _draw_power_bubble(self, surface, override_power):
         """Affiche la puissance dans un cercle en bas à droite."""
