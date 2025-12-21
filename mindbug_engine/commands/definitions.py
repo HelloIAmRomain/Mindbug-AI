@@ -49,21 +49,15 @@ class PlayCardCommand(Command):
             pass_cmd = PassCommand()
             pass_cmd.execute(game)
 
+
 @dataclass
 class AttackCommand(Command):
-    """
-    Déclare une attaque avec une créature.
-    Gère les triggers ON_ATTACK et le mot-clé HUNTER.
-    """
     attacker_index: int
 
     def execute(self, game):
         ap = game.state.active_player
-
-        # Calcul dynamique de l'adversaire (P1 vs P2)
         opp = game.state.player2 if ap == game.state.player1 else game.state.player1
 
-        # 1. Validation
         if not (0 <= self.attacker_index < len(ap.board)):
             log_error(f"❌ Invalid attacker index {self.attacker_index}")
             return
@@ -73,43 +67,57 @@ class AttackCommand(Command):
 
         log_info(f"> ⚔️ {ap.name} declares attack with {attacker.name} !")
 
-        # 2. Trigger ON_ATTACK (Immédiat)
-        # Se déclenche avant que l'adversaire ne puisse réagir
+        # 2. Trigger ON_ATTACK
         if attacker.trigger == Trigger.ON_ATTACK:
             log_info(f"⚡ Trigger ON_ATTACK activated for {attacker.name}")
             game.effect_manager.apply_effect(attacker, ap, opp)
-
-            # Note : Si cet effet déclenche une sélection (ex: Détruire une cible),
-            # la phase passera à RESOLUTION_CHOICE et le tour sera "suspendu" ici.
-            # La suite (Blocage) devra être gérée par la reprise du flux (Resume Flow).
             if game.state.phase == Phase.RESOLUTION_CHOICE:
                 return
 
         # 3. Gestion HUNTER (Chasseur)
-        # Si Chasseur : L'attaquant choisit la créature adverse qui DOIT bloquer.
         has_targets = len(opp.board) > 0
         if Keyword.HUNTER in attacker.keywords and has_targets:
             log_info(f"> 🏹 HUNTER triggers : {ap.name} chooses the blocker.")
 
-            # Callback : Ce qui se passe quand le joueur a cliqué sur la victime
+            # Callback : Ce qui se passe quand le joueur a cliqué
             def on_hunter_target_selected(selection):
-                victim = selection[0]
-                log_info(f"   -> Hunter targeted {victim.name}")
-                # Résolution immédiate du combat (Pas de phase de décision pour l'adversaire)
-                game.resolve_combat(blocker=victim)
+                target = selection[0]
 
-            # Appel à l'API de sélection
+                # OPTION A : Le joueur a cliqué "Attaque Normale" (Skip Hunter)
+                if target == "NO_HUNT":
+                    log_info("   -> Hunter ability skipped (Standard Attack).")
+                    game.state.phase = Phase.BLOCK_DECISION
+                    game.turn_manager.switch_active_player()
+                    return
+
+                # OPTION B : Le joueur a choisi une cible
+                log_info(f"   -> Hunter targeted {target.name}")
+
+                # On switch manuellement vers le défenseur AVANT de résoudre le combat.
+                # Comme ça, resolve_combat() fera le switch inverse (Def -> Att)
+                # et end_turn() finira le travail (Att -> Def).
+                game.turn_manager.switch_active_player()
+
+                # On force la phase pour sortir de RESOLUTION_CHOICE
+                game.state.phase = Phase.BLOCK_DECISION
+
+                # Résolution immédiate
+                game.resolve_combat(blocker=target)
+
+            # On injecte l'option spéciale "NO_HUNT" dans les choix possibles
+            candidates = list(opp.board)
+            candidates.append("NO_HUNT")
+
             game.ask_for_selection(
-                candidates=opp.board,
+                candidates=candidates,
                 reason="HUNTER_TARGET",
                 count=1,
-                selector=ap,  # C'est l'attaquant qui choisit !
+                selector=ap,
                 callback=on_hunter_target_selected
             )
-            return  # On stop ici, on attend le choix du joueur
+            return
 
-        # 4. Transition standard (Pas de Chasseur ou pas de cibles)
-        # On passe la main au défenseur pour qu'il choisisse de bloquer ou non.
+        # 4. Transition standard
         game.state.phase = Phase.BLOCK_DECISION
         game.turn_manager.switch_active_player()
 

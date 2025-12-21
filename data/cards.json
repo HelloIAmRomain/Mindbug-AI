@@ -583,7 +583,7 @@
           "group": "OPPONENT",
           "zone": "HAND",
           "count": 1,
-          "select": "RANDOM"
+          "select": "CHOICE_OPP"
         }
       }
     ]

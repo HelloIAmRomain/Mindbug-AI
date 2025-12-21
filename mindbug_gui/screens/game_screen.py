@@ -118,9 +118,12 @@ class GameScreen(BaseScreen):
         hide_p2 = True and not debug
         hide_p1 = False
 
+        # On utilise le joueur visuel, pas juste actif
+        visual_idx = self._get_visual_player_idx()
+
         if self.game_mode == "HOTSEAT":
-            # Si c'est au tour de P2, on cache P1
-            if self.game.state.active_player_idx == 1:
+            # Si le focus est sur P2, on cache P1
+            if visual_idx == 1:
                 hide_p1 = True and not debug
                 hide_p2 = False
             else:
@@ -322,7 +325,10 @@ class GameScreen(BaseScreen):
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                 for cv in reversed(self.card_views):
                     if cv.rect.collidepoint(event.pos):
-                        res = cv.handle_event(event)  # Appel direct à CardView pour le zoom
+                        if cv.is_hidden:
+                            break
+
+                        res = cv.handle_event(event)
                         if res and res[0] == "ZOOM_CARD": self.zoomed_card = res[1]
                         break
             if event.type == pygame.MOUSEBUTTONUP and event.button == 3:
@@ -344,10 +350,11 @@ class GameScreen(BaseScreen):
 
         # Gestion Rideau Hotseat
         if self.game_mode == "HOTSEAT" and not self.game.state.winner:
-            current_idx = self.game.state.active_player_idx
-            if current_idx != self.last_active_idx:
+            current_visual_idx = self._get_visual_player_idx()
+
+            if current_visual_idx != self.last_active_idx:
                 self.show_curtain = True
-                self.last_active_idx = current_idx
+                self.last_active_idx = current_visual_idx
                 self.viewing_discard_pile = None
                 self._init_layout()
 
@@ -560,6 +567,17 @@ class GameScreen(BaseScreen):
         self.ui_buttons.append(Button(self.width - 100, 20, 80, 40, "MENU", font, "CMD_MENU", bg_color=BTN_SURFACE,
                                       text_color=TEXT_PRIMARY, hover_color=BTN_HOVER))
 
+        # Bouton Spécial Hunter : décide d'attaquer normalement (pas viser)
+        req = self.game.state.active_request
+        if req and req.reason == "HUNTER_TARGET":
+            cx = self.width // 2
+            cy = self.height - 130  # Juste au-dessus de la main
+            self.ui_buttons.append(
+                Button(cx - 100, cy, 200, 50, "ATTAQUE NORMALE", font, "SKIP_HUNTER",
+                       bg_color=BTN_PASS, hover_color=BTN_HOVER)
+            )
+            return  # Pas d'autres boutons (Mindbug/Pass) pendant cette phase
+
         is_human_turn = not (self.game_mode == "PVE" and self.game.state.active_player_idx == 1)
         if is_human_turn and not self.game.state.winner:
             legal_moves = self.game.get_legal_moves()
@@ -596,10 +614,17 @@ class GameScreen(BaseScreen):
         return ""
 
     def _handle_button_action(self, action_id):
-        # 1. Gestion du Menu (Pause / Quitter)
+        # 1. Gestion du Menu
         if action_id == "CMD_MENU":
             self.show_confirm_menu = True
             self._create_confirm_buttons()
+            return
+
+        # Gestion du Skip Hunter
+        if action_id == "SKIP_HUNTER":
+            # On envoie l'objet sentinelle "NO_HUNT" au moteur
+            self.game.resolve_selection_effect("NO_HUNT")
+            self._init_layout()
             return
 
         # 2. Gestion des coups de jeu (Play, Attack, Pass...)
@@ -612,20 +637,43 @@ class GameScreen(BaseScreen):
                 self._init_layout()
 
     def _handle_card_events(self, event):
-        for cv in self.card_views:
+        """
+        Gestion centralisée des clics sur les cartes pour les modes spéciaux
+        (Sélection de cible, Inspection de défausse, Zoom).
+        """
+        # On parcourt en inversé pour respecter l'ordre d'affichage (cliquer sur celle du dessus)
+        for cv in reversed(self.card_views):
+            # 1. On laisse le widget gérer (ex: Clic Droit / Zoom)
             res = cv.handle_event(event)
+
+            # 2. FIX : Si c'est un Clic Gauche et que le widget l'a ignoré (comportement par défaut)
+            # On le détecte manuellement ici.
+            if not res and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if cv.rect.collidepoint(event.pos) and not cv.is_hidden and cv.visible:
+                    res = ("CLICK_CARD", cv.card)
+
+            # 3. Traitement de l'action
             if res:
                 evt_type, card_obj = res
+
+                # Cas A : Clic sur une pile de défausse (pour l'ouvrir)
                 if hasattr(cv, 'metadata') and cv.metadata and cv.metadata.get("action") == "VIEW_DISCARD":
                     player = cv.metadata["player"]
                     self.viewing_discard_pile = player.discard
                     self.viewing_discard_owner_name = player.name
                     self._init_layout()
-                    return
+                    return  # Stop propagation
+
+                # Cas B : Zoom (Clic Droit)
                 if evt_type == "ZOOM_CARD":
-                    if not cv.is_hidden: self.zoomed_card = card_obj
+                    if not cv.is_hidden:
+                        self.zoomed_card = card_obj
+
+                # Cas C : Validation d'un choix (Clic Gauche)
                 elif evt_type == "CLICK_CARD":
                     self._try_play_card(card_obj)
+
+                # Si on a trouvé une carte, on arrête de chercher (on ne clique pas à travers)
                 break
 
     def _try_play_card(self, card_obj):
@@ -660,20 +708,51 @@ class GameScreen(BaseScreen):
                 target_card = ap.board[idx]
             elif action.startswith("SELECT_") and req:
                 for cv in self.card_views:
-                    if cv.card in req.candidates: cv.is_highlighted = True
+                    if cv.card in req.candidates:
+                        cv.is_highlighted = True
             if target_card:
                 for cv in self.card_views:
                     if cv.card == target_card: cv.is_highlighted = True
 
     # --- DRAW UTILS ---
     def _draw_overlay_bg(self, surface):
-        ov = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        ov.fill((0, 0, 0, 200))
-        surface.blit(ov, (0, 0))
-        font = self.app.res_manager.get_font(30, bold=True)
-        title = "CHOISISSEZ UNE CARTE" if self.game.state.active_request else f"DÉFAUSSE DE {self.viewing_discard_owner_name}"
-        txt = font.render(title, True, TEXT_PRIMARY)
-        surface.blit(txt, txt.get_rect(center=(self.width // 2, 80)))
+        """Dessine le fond sombre uniquement si on est en mode 'Inspection' (Overlay actif)."""
+
+        # On n'affiche le fond noir que si on regarde une défausse ou si l'overlay de sélection a généré des cartes
+        # (c'est-à-dire, si le nombre de card_views est supérieur aux cartes du plateau/main standard)
+        # Mais plus simplement : on l'affiche si on a explicitly activé l'inspection de défausse
+        # OU si la requête active concerne la défausse.
+
+        should_draw = False
+
+        if self.viewing_discard_pile:
+            should_draw = True
+        elif self.game.state.active_request:
+            # On vérifie si on a généré des cartes "en plus" (overlay)
+            # Astuce : Les cartes de l'overlay sont ajoutées à la fin de self.card_views dans _create_overlay_grid
+            # Si on a appelé _create_overlay_grid, on veut le fond noir.
+
+            # On réutilise la logique de détection de zone
+            req = self.game.state.active_request
+            if req.candidates:
+                first = req.candidates[0]
+                for p in self.game.state.players:
+                    if first in p.discard:
+                        should_draw = True
+                        break
+
+        if should_draw:
+            ov = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            ov.fill((0, 0, 0, 200))
+            surface.blit(ov, (0, 0))
+
+            font = self.app.res_manager.get_font(30, bold=True)
+            title = "DÉFAUSSE" if self.viewing_discard_pile else "CHOISISSEZ UNE CARTE"
+            if self.viewing_discard_owner_name:
+                title += f" DE {self.viewing_discard_owner_name}"
+
+            txt = font.render(title, True, TEXT_PRIMARY)
+            surface.blit(txt, txt.get_rect(center=(self.width // 2, 80)))
 
     def _draw_pile_counts(self, surface):
         font = self.app.res_manager.get_font(24, bold=True)
@@ -798,8 +877,29 @@ class GameScreen(BaseScreen):
             surface.blit(txt, zone.rect.topleft)
 
     def _create_selection_overlay_views(self):
+        """
+        Génère les vues pour la sélection.
+        Ne crée un overlay que si les cibles ne sont pas déjà visibles (ex: Défausse).
+        """
         req = self.game.state.active_request
-        if req and req.candidates: self._create_overlay_grid(req.candidates)
+        if not req or not req.candidates: return
+
+        # On regarde où se trouve la première carte candidate pour décider du mode d'affichage
+        first_candidate = req.candidates[0]
+
+        # Vérifions si les cartes sont dans une défausse
+        in_discard = False
+        for p in self.game.state.players:
+            if first_candidate in p.discard:
+                in_discard = True
+                break
+
+        # Si c'est dans la défausse, on crée l'overlay (comportement "Inspecter")
+        if in_discard:
+            self._create_overlay_grid(req.candidates)
+
+        # Sinon (Board ou Main), on ne fait RIEN ici.
+        # Les cartes existantes seront mises en surbrillance par _refresh_highlights().
 
     def _create_discard_inspection_views(self):
         if self.viewing_discard_pile: self._create_overlay_grid(self.viewing_discard_pile)
@@ -821,3 +921,21 @@ class GameScreen(BaseScreen):
             if self.game.state.active_request and card in self.game.state.active_request.candidates:
                 cv.is_highlighted = True
             self.card_views.append(cv)
+
+    def _get_visual_player_idx(self):
+        """
+        Retourne l'index du joueur qui doit avoir le focus à l'écran.
+        Gère le cas où un joueur doit répondre (Selection) pendant le tour de l'autre.
+        """
+        # Par défaut, c'est le joueur dont c'est le tour
+        idx = self.game.state.active_player_idx
+
+        # Surcharge si une requête de sélection est en cours (ex: Défausse adverse)
+        req = self.game.state.active_request
+        if req and self.game.state.phase == Phase.RESOLUTION_CHOICE:
+            if req.selector == self.game.state.player1:
+                return 0
+            elif req.selector == self.game.state.player2:
+                return 1
+
+        return idx
