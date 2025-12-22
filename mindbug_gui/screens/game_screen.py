@@ -51,11 +51,13 @@ class GameScreen(BaseScreen):
         # 2. IA (AGENT)
         self.ai_agent = None
         if self.app.config.game_mode == "PVE":
-            # On passe strategy="MCTS"
+            # On utilise la stratégie MCTS par défaut pour le PvE
             self.ai_agent = AgentFactory.create_agent(
                 difficulty=self.app.config.ai_difficulty,
                 strategy="MCTS"
             )
+
+        # --- INITIALISATION ETAT IA ---
         self.ai_thinking = False
         self.ai_thread_result = None
 
@@ -118,15 +120,19 @@ class GameScreen(BaseScreen):
 
             # 2. Modales Bloquantes (Erreur, Confirmation, Rideau)
             if self.error_message:
-                return self._handle_modal_events(event, self.error_buttons)
+                res = self._handle_modal_events(event, self.error_buttons)
+                if res == "MENU":
+                    return "MENU"
+                continue  # On consomme l'event et on passe au suivant
 
             if self.show_confirm_menu:
                 res = self._handle_modal_events(event, self.confirm_buttons)
+                # FIX BUG #1 : On ne return PAS None, sinon on casse la boucle d'événements
                 if res == "CONFIRM_YES":
                     return "MENU"
                 if res == "CONFIRM_NO":
                     self.show_confirm_menu = False
-                return None
+                continue  # On consomme l'event
 
             if self.show_curtain:
                 if event.type in [pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN]:
@@ -201,6 +207,81 @@ class GameScreen(BaseScreen):
         self.renderer.draw(surface, self.game.state, ui_context)
 
     # =========================================================================
+    #  LOGIQUE IA (THREADING)
+    # =========================================================================
+
+    def _update_ai(self):
+        """Vérifie si c'est au tour de l'IA de jouer et lance la réflexion."""
+        # Sécurité : Si pas en PvE ou partie finie, on sort
+        if self.app.config.game_mode != "PVE" or self.game.state.winner:
+            return
+
+        # 1. Vérifions si c'est le tour principal de l'IA (P2)
+        # Note: active_player_idx == 1 signifie P2
+        is_p2_active = (self.game.state.active_player_idx == 1)
+
+        # 2. FIX BUG #2 : Vérifions si l'IA doit répondre à une question (Selection)
+        # Ex: "Furet Saboteur" joué par P1 -> P2 doit choisir quoi défausser
+        req = self.game.state.active_request
+        is_p2_selecting = (req is not None and req.selector ==
+                           self.game.state.player2)
+
+        # Condition globale : C'est à l'IA de jouer SI (C'est son tour OU C'est elle qui doit choisir)
+        ai_must_play = (is_p2_active or is_p2_selecting)
+
+        if ai_must_play:
+            if not self.ai_thinking:
+                self.ai_thinking = True
+                t = threading.Thread(target=self._run_ai_thread)
+                t.daemon = True
+                t.start()
+
+            # Récupération du résultat
+            if self.ai_thread_result:
+                move = self.ai_thread_result
+                self.ai_thread_result = None
+                self.ai_thinking = False
+
+                if move:
+                    try:
+                        if move[0].startswith("SELECT_"):
+                            # Cas spécial pour les sélections d'objets (pas d'index simple)
+                            # L'IA retourne (ActionType, Index)
+                            # Mais le moteur attend l'objet pour resolve_selection_effect
+                            # On doit reconstruire l'objet depuis l'index
+                            from mindbug_engine.commands.command_factory import CommandFactory
+                            # Astuce : on utilise la factory pour résoudre la cible comme si c'était un clic
+                            cmd = CommandFactory.create(
+                                move[0], move[1], self.game)
+                            if cmd:
+                                cmd.execute(self.game)
+                        else:
+                            # Cas standard (Play, Attack, Block, Pass...)
+                            self.game.step(move[0], move[1]
+                                           if len(move) > 1 else None)
+
+                        self._refresh_ui_components()
+                    except Exception as e:
+                        log_error(f"⚠️ Erreur exécution coup IA : {e}")
+
+    def _run_ai_thread(self):
+        """Exécute la réflexion de l'IA dans un thread séparé."""
+        try:
+            # Petit délai pour laisser l'interface respirer (UX)
+            time.sleep(0.5)
+
+            # On clone le jeu pour que l'IA puisse simuler sans toucher au vrai état
+            game_clone = deepcopy(self.game)
+
+            # On demande à l'agent (MCTS ou Heuristic) de choisir une action
+            self.ai_thread_result = self.ai_agent.get_action(game_clone)
+
+        except Exception as e:
+            log_error(f"❌ CRASH IA Thread : {e}")
+            # En cas de panique, on passe le tour pour ne pas bloquer le jeu
+            self.ai_thread_result = ("PASS", -1)
+
+    # =========================================================================
     #  GESTION DES ENTRÉES (CONTROLLER LOGIC)
     # =========================================================================
 
@@ -232,6 +313,16 @@ class GameScreen(BaseScreen):
 
         # B. Clic Gauche (Interaction ou Drag)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Sécurité : Si l'IA réfléchit, on bloque tout
+            if self.ai_thinking:
+                return
+
+            # Sécurité PvE : Si c'est au tour de l'IA de choisir une cible, l'humain ne doit pas cliquer
+            if self.app.config.game_mode == "PVE":
+                req = self.game.state.active_request
+                if req and req.selector == self.game.state.player2:
+                    return
+
             clicked_cv = self._get_card_view_under_mouse(event.pos)
             if clicked_cv:
                 # 1. Cas Inspection Défausse (Metadata UI)
@@ -661,41 +752,3 @@ class GameScreen(BaseScreen):
             elif req.selector == self.game.state.player2:
                 return 1
         return idx
-
-    def _update_ai(self):
-        is_ai_turn = (self.app.config.game_mode ==
-                      "PVE" and self.game.state.active_player_idx == 1)
-        if is_ai_turn and not self.game.state.winner:
-            if not self.ai_thinking:
-                self.ai_thinking = True
-                t = threading.Thread(target=self._run_ai_thread)
-                t.daemon = True
-                t.start()
-            if self.ai_thread_result:
-                move = self.ai_thread_result
-                self.ai_thread_result = None
-                self.ai_thinking = False
-                if move:
-                    try:
-                        self.game.step(move[0], move[1]
-                                       if len(move) > 1 else None)
-                        self._refresh_ui_components()
-                    except Exception as e:
-                        log_error(f"⚠️ Erreur IA : {e}")
-
-    def _run_ai_thread(self):
-        """Exécute la réflexion de l'IA dans un thread séparé."""
-        try:
-            # Petit délai pour laisser l'interface respirer (UX)
-            time.sleep(0.5)
-
-            # On clone le jeu pour que l'IA puisse simuler sans toucher au vrai état
-            game_clone = deepcopy(self.game)
-
-            # On demande à l'agent (MCTS ou Heuristic) de choisir une action
-            self.ai_thread_result = self.ai_agent.get_action(game_clone)
-
-        except Exception as e:
-            log_error(f"❌ CRASH IA Thread : {e}")
-            # En cas de panique, on passe le tour pour ne pas bloquer le jeu
-            self.ai_thread_result = ("PASS", -1)

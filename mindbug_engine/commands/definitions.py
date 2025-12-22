@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
+from functools import partial
 from mindbug_engine.commands.command import Command
 from mindbug_engine.core.consts import Phase, Trigger, Keyword
 from mindbug_engine.utils.logger import log_info, log_error
@@ -38,14 +39,7 @@ class PlayCardCommand(Command):
             game.state.phase = Phase.MINDBUG_DECISION
         else:
             # Cas "Auto-Pass" (0 Mindbugs restants)
-
-            # Pour utiliser PassCommand, il faut que le jeu soit dans l'état
-            # "C'est à l'adversaire de décider".
-            # On switch donc manuellement vers l'adversaire.
             game.turn_manager.switch_active_player()
-
-            # Maintenant Active Player = Opponent.
-            # On force le Pass (comme s'il avait cliqué "Decliner").
             pass_cmd = PassCommand()
             pass_cmd.execute(game)
 
@@ -79,30 +73,8 @@ class AttackCommand(Command):
         if Keyword.HUNTER in attacker.keywords and has_targets:
             log_info(f"> 🏹 HUNTER triggers : {ap.name} chooses the blocker.")
 
-            # Callback : Ce qui se passe quand le joueur a cliqué
-            def on_hunter_target_selected(selection):
-                target = selection[0]
-
-                # OPTION A : Le joueur a cliqué "Attaque Normale" (Skip Hunter)
-                if target == "NO_HUNT":
-                    log_info("   -> Hunter ability skipped (Standard Attack).")
-                    game.state.phase = Phase.BLOCK_DECISION
-                    game.turn_manager.switch_active_player()
-                    return
-
-                # OPTION B : Le joueur a choisi une cible
-                log_info(f"   -> Hunter targeted {target.name}")
-
-                # On switch manuellement vers le défenseur AVANT de résoudre le combat.
-                # Comme ça, resolve_combat() fera le switch inverse (Def -> Att)
-                # et end_turn() finira le travail (Att -> Def).
-                game.turn_manager.switch_active_player()
-
-                # On force la phase pour sortir de RESOLUTION_CHOICE
-                game.state.phase = Phase.BLOCK_DECISION
-
-                # Résolution immédiate
-                game.resolve_combat(blocker=target)
+            # CORRECTION IA : Utilisation de partial et méthode statique pour être "Picklable"
+            callback = partial(self._on_hunter_target_selected, game)
 
             # On injecte l'option spéciale "NO_HUNT" dans les choix possibles
             candidates = list(opp.board)
@@ -113,13 +85,37 @@ class AttackCommand(Command):
                 reason="HUNTER_TARGET",
                 count=1,
                 selector=ap,
-                callback=on_hunter_target_selected
+                callback=callback
             )
             return
 
         # 4. Transition standard
         game.state.phase = Phase.BLOCK_DECISION
         game.turn_manager.switch_active_player()
+
+    @staticmethod
+    def _on_hunter_target_selected(game, selection):
+        """Callback exécuté quand le joueur a choisi sa cible Hunter."""
+        target = selection[0]
+
+        # OPTION A : Le joueur a cliqué "Attaque Normale" (Skip Hunter)
+        if target == "NO_HUNT":
+            log_info("   -> Hunter ability skipped (Standard Attack).")
+            game.state.phase = Phase.BLOCK_DECISION
+            game.turn_manager.switch_active_player()
+            return
+
+        # OPTION B : Le joueur a choisi une cible
+        log_info(f"   -> Hunter targeted {target.name}")
+
+        # On switch manuellement vers le défenseur AVANT de résoudre le combat.
+        game.turn_manager.switch_active_player()
+
+        # On force la phase pour sortir de RESOLUTION_CHOICE
+        game.state.phase = Phase.BLOCK_DECISION
+
+        # Résolution immédiate
+        game.resolve_combat(blocker=target)
 
 
 class BlockCommand(Command):
@@ -161,7 +157,8 @@ class MindbugCommand(Command):
     """
 
     def execute(self, game):
-        thief = game.state.active_player  # C'est celui qui joue le Mindbug (donc l'adversaire de celui qui a posé)
+        # C'est celui qui joue le Mindbug (donc l'adversaire de celui qui a posé)
+        thief = game.state.active_player
 
         if thief.mindbugs > 0 and game.state.pending_card:
             thief.mindbugs -= 1
@@ -174,13 +171,10 @@ class MindbugCommand(Command):
             game.state.pending_card = None
 
             # 2. Gestion du "Replay" (Le joueur initial rejoue un tour complet)
-            # Si on est bloqué dans une sélection (ex: Trigger OnPlay du voleur demande une cible)
             if game.state.phase == Phase.RESOLUTION_CHOICE:
                 log_info("   -> Turn end suspended pending selection...")
-                # On marque qu'un replay doit avoir lieu après la sélection
                 game.state.mindbug_replay_pending = True
             else:
-                # Sinon on lance le tour bonus immédiatement
                 game.execute_mindbug_replay()
         else:
             log_error("❌ Illegal Mindbug attempt")
@@ -206,25 +200,20 @@ class PassCommand(Command):
             game.state.pending_card = None
 
         # Gestion fin de tour
-        # Si un trigger (ON_PLAY) a demandé une sélection, on ne finit pas le tour
         if game.state.phase == Phase.RESOLUTION_CHOICE:
             log_info("   -> Turn end suspended pending selection...")
             game.state.end_turn_pending = True
         else:
-            # Sinon, le tour est fini
             game.turn_manager.end_turn()
 
 
 class ResolveSelectionCommand(Command):
     """
-    Commande spéciale générée par l'UI quand un joueur clique sur une cible
-    alors que le jeu est en phase RESOLUTION_CHOICE.
+    Commande spéciale générée par l'UI quand un joueur clique sur une cible.
     """
 
     def __init__(self, selected_object: Any, **kwargs):
-        # La Factory a déjà résolu l'index en objet
         self.selected_object = selected_object
 
     def execute(self, game):
-        # On transmet l'objet à l'Engine qui fera le lien avec le QueryManager et gérera la reprise du flux
         game.resolve_selection_effect(self.selected_object)
