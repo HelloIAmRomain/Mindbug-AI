@@ -31,9 +31,10 @@ class CardView(UIWidget):
         self.is_hidden = is_hidden
         self.visible = True
 
+        # Initialisation de l'attribut metadata pour stocker des infos contextuelles
         self.metadata: Dict[str, Any] = {}
 
-        # --- ÉTATS DRAG & DROP (NOUVEAU) ---
+        # --- ÉTATS DRAG & DROP ---
         self.is_dragging = False
         self.origin_pos = (x, y)  # Position de retour si le drop échoue
         # Écart souris/coin pour un déplacement fluide
@@ -51,7 +52,8 @@ class CardView(UIWidget):
         # Préparation des Polices (Optimisation)
         self.font_title = pygame.font.SysFont("Arial", int(h * 0.1), bold=True)
         self.font_kw = pygame.font.SysFont("Arial", int(h * 0.08))
-        self.font_power = pygame.font.Font(None, int(w * 0.3))
+        # Légèrement plus grand pour la bulle
+        self.font_power = pygame.font.Font(None, int(w * 0.35))
 
         # Chargement initial de l'image
         self._refresh_image()
@@ -74,13 +76,10 @@ class CardView(UIWidget):
     def start_drag(self, mouse_pos: Tuple[int, int]):
         """Commence le déplacement de la carte."""
         if self.is_hidden:
-            # On ne peut pas déplacer une carte cachée (ex: main adverse)
             return
 
         self.is_dragging = True
-        # On sauvegarde la position actuelle pour pouvoir y revenir (snap back)
         self.origin_pos = (self.rect.x, self.rect.y)
-        # On calcule le décalage pour que la carte ne "saute" pas au centre de la souris
         self.drag_offset = (
             self.rect.x - mouse_pos[0], self.rect.y - mouse_pos[1])
 
@@ -94,7 +93,6 @@ class CardView(UIWidget):
     def stop_drag(self):
         """Termine le déplacement et remet la carte à sa place d'origine."""
         self.is_dragging = False
-        # Retour élastique à la position d'origine (le GameScreen changera cette position si le coup est valide)
         self.rect.topleft = self.origin_pos
 
     # =========================================================================
@@ -109,19 +107,14 @@ class CardView(UIWidget):
             self.is_hovered = False
 
     def handle_event(self, event: pygame.event.Event) -> Optional[Tuple[str, Card]]:
-        """
-        Gère les clics (Zoom, etc.).
-        Note: Le Drag & Drop est géré par le GameScreen, mais on garde le clic droit ici.
-        """
         if not self.visible:
             return None
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.is_hovered:
-                # Clic Droit : Zoom
-                if event.button == 3:
+                if event.button == 3:  # Clic Droit : Zoom
                     return ("ZOOM_CARD", self.card)
-                # Clic Gauche : On laisse le GameScreen gérer le Drag via start_drag()
+                # Clic Gauche : Géré par le GameScreen pour le Drag
 
         return None
 
@@ -211,7 +204,7 @@ class CardView(UIWidget):
                          width, border_radius=8)
 
     def _draw_power_bubble(self, surface, override_power):
-        """Affiche la puissance dans un cercle en bas à droite."""
+        """Affiche la puissance dans un cercle en HAUT À GAUCHE (Overlay sur la stat de base)."""
         val = override_power if override_power is not None else self.card.power
 
         txt_color = (20, 20, 20)
@@ -226,14 +219,17 @@ class CardView(UIWidget):
         if has_poison:
             txt_color = STATUS_OK
             bg_circle = (20, 40, 20)
-        elif val > self.card.power:
-            txt_color = STATUS_OK
-        elif val < self.card.power:
-            txt_color = STATUS_CRIT
+        elif val > self.card.base_power:
+            txt_color = STATUS_OK  # Vert si boosté
+        elif val < self.card.base_power:
+            txt_color = STATUS_CRIT  # Rouge si affaibli
 
         radius = int(self.rect.width * 0.18)
-        cx = self.rect.right - radius - 5
-        cy = self.rect.bottom - radius - 5
+
+        # POSITIONNEMENT HAUT GAUCHE
+        # +5 de marge pour ne pas coller au bord
+        cx = self.rect.x + radius + 5
+        cy = self.rect.y + radius + 5
 
         pygame.draw.circle(surface, bg_circle, (cx, cy), radius)
         pygame.draw.circle(surface, (0, 0, 0), (cx, cy), radius, width=2)
