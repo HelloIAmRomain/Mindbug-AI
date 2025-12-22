@@ -22,7 +22,6 @@ def test_integration_on_play_trigger(game):
     game.state.active_player_idx = 0
     game.state.phase = Phase.P1_MAIN
 
-    # CORRECTION : Index 0 au lieu de -1
     game.step("PLAY", 0)
     game.step("PASS")  # P2 refuse
 
@@ -50,7 +49,6 @@ def test_integration_mindbug_steals_effect(game):
     game.state.active_player_idx = 0
     game.state.phase = Phase.P1_MAIN
 
-    # CORRECTION : Index 0 au lieu de -1
     game.step("PLAY", 0)
     game.step("MINDBUG")
 

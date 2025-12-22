@@ -15,23 +15,31 @@ def make_config():
 
 
 def make_small_deck():
-    # return a small deck list
-    return [Card(f"d{i}", f"D{i}", power=1) for i in range(30)]
+    # On donne des puissances différentes (i) pour éviter
+    # la boucle infinie d'égalité lors de la bataille pour l'initiative.
+    return [Card(f"d{i}", f"D{i}", power=i) for i in range(30)]
 
 
 def test_start_game_sets_hands_and_players(monkeypatch):
-    # patch DeckFactory.create_deck to return a small deck
+    # patch DeckFactory
     monkeypatch.setattr("mindbug_engine.infrastructure.deck_factory.DeckFactory.create_deck",
                         lambda self, **k: (make_small_deck(), [], ["FIRST_CONTACT"]))
 
     g = MindbugGame(make_config())
     g.start_game()
 
-    # each player should have up to 5 cards
+    # Le jeu doit être en phase d'initiative (car deck 30 cartes > 22)
+    assert g.state.phase == Phase.INITIATIVE_BATTLE
+    assert g.state.initiative_duel is not None
+
+    # On résout l'initiative pour vérifier que la distribution se fait ensuite
+    g.resolve_initiative_step()
+
+    # Maintenant les mains sont remplies
     assert len(g.state.player1.hand) == 5
     assert len(g.state.player2.hand) == 5
     assert g.state.turn_count == 1
-    assert g.state.phase == Phase.P1_MAIN
+    assert g.state.phase in [Phase.P1_MAIN, Phase.P2_MAIN]
 
 
 def test_get_legal_moves_mindbug_and_frenzy(monkeypatch):

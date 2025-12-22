@@ -9,7 +9,7 @@ class TurnManager:
     """
 
     def __init__(self, game):
-        # CORRECTION : On accepte 'game' (la façade), pas juste 'state'.
+        # On accepte 'game' (la façade), pas juste 'state'.
         self.game = game
         self.state = game.state
 
@@ -26,15 +26,15 @@ class TurnManager:
         """Bascule le joueur actif (0 <-> 1)."""
         old_name = self.state.active_player.name
         self.state.active_player_idx = 1 - self.state.active_player_idx
-        log_info(f"🔄 Switch Player : {old_name} -> {self.state.active_player.name}")
+        log_info(
+            f"🔄 Switch Player : {old_name} -> {self.state.active_player.name}")
 
     def refill_hand(self, player):
         """
-        Complète la main du joueur jusqu'à 5 cartes en piochant dans le deck commun.
+        Complète la main du joueur jusqu'à 5 cartes en piochant dans SA pioche.
         """
-        # CORRECTION : On s'assure d'utiliser self.state.deck
-        while len(player.hand) < 5 and len(self.state.deck) > 0:
-            card = self.state.deck.pop()
+        while len(player.hand) < 5 and len(player.deck) > 0:
+            card = player.deck.pop()
             player.hand.append(card)
             # log_debug(f"   -> {player.name} draws a card.")
 
@@ -48,7 +48,8 @@ class TurnManager:
         """
         # 1. Victoire
         self.check_win_condition()
-        if self.state.winner: return
+        if self.state.winner:
+            return
 
         # 2. Pioche
         self.refill_hand(self.state.player1)
@@ -69,14 +70,17 @@ class TurnManager:
 
     def check_win_condition(self):
         """Vérifie si un joueur a perdu (PV <= 0)."""
-        if self.state.winner: return  # Déjà gagné
+        if self.state.winner:
+            return  # Déjà gagné
 
         if self.state.player1.hp <= 0:
             self.state.winner = self.state.player2
             self.state.phase = Phase.GAME_OVER
-            log_info(f"🏆 VICTOIRE : {self.state.player2.name} gagne la partie !")
+            log_info(
+                f"🏆 VICTOIRE : {self.state.player2.name} gagne la partie !")
 
         elif self.state.player2.hp <= 0:
             self.state.winner = self.state.player1
             self.state.phase = Phase.GAME_OVER
-            log_info(f"🏆 VICTOIRE : {self.state.player1.name} gagne la partie !")
+            log_info(
+                f"🏆 VICTOIRE : {self.state.player1.name} gagne la partie !")

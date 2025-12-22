@@ -7,8 +7,13 @@ def test_initial_setup(game):
     # start_game() donne 5 cartes, mais notre fixture 'game' vide le deck ensuite.
     # Les mains, elles, sont déjà remplies.
     assert game.state.turn_count == 1
-    assert game.state.phase == Phase.P1_MAIN
+
+    # La phase dépend de qui a gagné l'initiative (P1 ou P2)
+    expected_phase = Phase.P1_MAIN if game.state.active_player_idx == 0 else Phase.P2_MAIN
+    assert game.state.phase == expected_phase
+
     assert len(game.state.player1.hand) == 5
+    assert len(game.state.player2.hand) == 5
 
 
 def test_flow_play_card_transition(game):
@@ -16,6 +21,7 @@ def test_flow_play_card_transition(game):
     # ACTIVATION MINDBUG REQUISE
     game.state.player2.mindbugs = 2
 
+    # On force le setup pour le test (P1 commence)
     game.state.active_player_idx = 0
     game.state.phase = Phase.P1_MAIN
 
@@ -34,7 +40,12 @@ def test_flow_mindbug_refusal(game):
     game.state.phase = Phase.P1_MAIN
 
     vanilla_card = Card(id="test_soldat", name="Soldat Test", power=5)
-    game.state.player1.hand[0] = vanilla_card
+
+    # Sécurité : Si la main est vide (cas d'égalité initiative bizarre), on la remplit
+    if not game.state.player1.hand:
+        game.state.player1.hand.append(vanilla_card)
+    else:
+        game.state.player1.hand[0] = vanilla_card
 
     # 1. P1 joue
     game.step("PLAY", 0)
@@ -53,7 +64,11 @@ def test_flow_mindbug_accepted(game):
     game.state.phase = Phase.P1_MAIN
 
     neutral_card = Card(id="n", name="NeutralUnit", power=5)
-    game.state.player1.hand[0] = neutral_card
+
+    if not game.state.player1.hand:
+        game.state.player1.hand.append(neutral_card)
+    else:
+        game.state.player1.hand[0] = neutral_card
 
     # 1. P1 joue
     game.step("PLAY", 0)

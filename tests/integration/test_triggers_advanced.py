@@ -24,7 +24,8 @@ def test_trigger_unblocked_effect(game):
                         target={"group": "OPPONENT"},
                         params={"stat": "HP", "amount": 1, "operation": "SET"})
 
-    mosquito = Card("m", "Mosquito", 4, trigger=Trigger.ON_UNBLOCKED, effects=[effect])
+    mosquito = Card("m", "Mosquito", 4,
+                    trigger=Trigger.ON_UNBLOCKED, effects=[effect])
     p1.board = [mosquito]
 
     game.state.active_player_idx = 0
@@ -33,7 +34,7 @@ def test_trigger_unblocked_effect(game):
     game.step("ATTACK", 0)
     game.step("NO_BLOCK", -1)
 
-    # CORRECTION : Le joueur meurt.
+    # Le joueur meurt.
     # L'effet (HP=1) s'applique juste avant les dégâts (4).
     assert p2.hp == 0
     assert game.state.winner == p1

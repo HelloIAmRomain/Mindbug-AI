@@ -8,14 +8,10 @@ from mindbug_engine.utils.logger import log_info, log_error
 class DeckFactory:
     """
     Service responsable de la création du deck de jeu.
-    - Charge les cartes via CardLoader
-    - Filtre selon les Sets actifs
-    - Gère le mélange et la coupe à 20 cartes
     """
 
     def __init__(self, deck_path: str):
         self.deck_path = deck_path
-        # On charge toutes les cartes disponibles (Pool brut)
         self.all_cards_pool = CardLoader.load_from_json(self.deck_path)
 
     def create_deck(self,
@@ -30,7 +26,6 @@ class DeckFactory:
                 if norm not in available_sets_map:
                     available_sets_map[norm] = c.set
 
-
         # 2. Détermination des sets actifs
         used_sets_norm = []
         if active_sets:
@@ -44,30 +39,30 @@ class DeckFactory:
         candidates = []
         if used_sets_norm:
             for c in self.all_cards_pool:
-                # Normalisation de la carte
                 c_set_norm = c.set.upper().replace(" ", "_") if c.set else "NO_SET"
-
-                if len(candidates) < 3:
-                    pass
-
                 if c_set_norm in used_sets_norm:
                     candidates.append(c)
         else:
             candidates = list(self.all_cards_pool)
 
-        # Filtre ID
+        # Filtre ID (Mode Debug/Test)
         if active_card_ids:
-            candidates = [c for c in self.all_cards_pool if c.id in active_card_ids]
+            candidates = [
+                c for c in self.all_cards_pool if c.id in active_card_ids]
 
+        # 4. Validation & Coupe
+        # On a besoin de 22 cartes (20 jeu + 2 décision start)
+        REQUIRED_CARDS = 22
 
-        # 4. Validation
-        if len(candidates) < 10:
-            log_error(f"DeckFactory : Pas assez de cartes ({len(candidates)}) pour jouer.")
+        if len(candidates) < REQUIRED_CARDS:
+            # Fallback pour les tests ou petits sets : on prend tout ce qu'il y a
+            log_error(
+                f"DeckFactory : Pas assez de cartes ({len(candidates)}) pour la règle standard (22 requises).")
             return list(candidates), list(candidates), used_sets_norm
 
         game_deck = []
-        if len(candidates) > 20:
-            game_deck = random.sample(candidates, 20)
+        if len(candidates) > REQUIRED_CARDS:
+            game_deck = random.sample(candidates, REQUIRED_CARDS)
         else:
             game_deck = list(candidates)
 

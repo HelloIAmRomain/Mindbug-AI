@@ -6,6 +6,16 @@ from mindbug_engine.core.consts import Phase, Trigger, Keyword
 from mindbug_engine.utils.logger import log_info, log_error
 
 
+class ConfirmInitiativeCommand(Command):
+    """
+    Commande déclenchée par le joueur pour passer à l'étape suivante 
+    de la bataille d'initiative (Résolution ou Re-pioche).
+    """
+
+    def execute(self, game):
+        game.resolve_initiative_step()
+
+
 class PlayCardCommand(Command):
     """
     Joue une carte de la main.
@@ -73,7 +83,7 @@ class AttackCommand(Command):
         if Keyword.HUNTER in attacker.keywords and has_targets:
             log_info(f"> 🏹 HUNTER triggers : {ap.name} chooses the blocker.")
 
-            # CORRECTION IA : Utilisation de partial et méthode statique pour être "Picklable"
+            # Utilisation de partial et méthode statique pour être "Picklable"
             callback = partial(self._on_hunter_target_selected, game)
 
             # On injecte l'option spéciale "NO_HUNT" dans les choix possibles

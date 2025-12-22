@@ -13,8 +13,10 @@ def test_player_initialization():
 
 def test_card_copy_method():
     # Setup V2
-    eff = CardEffect("STEAL", target={"group": "OPPONENT"}, params={"count": 1})
-    original = Card(id="01", name="Rat", power=2, keywords=["HUNTER"], effects=[eff])
+    eff = CardEffect("STEAL", target={
+                     "group": "OPPONENT"}, params={"count": 1})
+    original = Card(id="01", name="Rat", power=2,
+                    keywords=["HUNTER"], effects=[eff])
     original.is_damaged = True
 
     copy = original.copy()
@@ -37,7 +39,6 @@ def test_loader_parses_effects():
 
     with patch("builtins.open", mock_open(read_data=fake_json)):
         with patch("os.path.exists", return_value=True):
-            # FIX : Utilisation du nouveau nom de méthode
             deck = CardLoader.load_from_json("dummy.json")
 
             assert len(deck) == 1

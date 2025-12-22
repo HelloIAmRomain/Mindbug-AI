@@ -41,7 +41,7 @@ def test_discovery_sets(mock_cards_json):
 def test_engine_filtering(mock_cards_json):
     """Vérifie le filtrage via la config injectée."""
 
-    # CORRECTION : On patche la référence dans le module engine directement
+    # On patche la référence dans le module engine directement
     with patch("mindbug_engine.engine.PATH_DATA", mock_cards_json):
         # Cas A : Set A uniquement
         cfg_a = MockConfig()
