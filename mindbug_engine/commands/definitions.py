@@ -6,6 +6,16 @@ from mindbug_engine.core.consts import Phase, Trigger, Keyword
 from mindbug_engine.utils.logger import log_info, log_error
 
 
+class ConfirmInitiativeCommand(Command):
+    """
+    Commande déclenchée par le joueur pour passer à l'étape suivante 
+    de la bataille d'initiative (Résolution ou Re-pioche).
+    """
+
+    def execute(self, game):
+        game.resolve_initiative_step()
+
+
 class PlayCardCommand(Command):
     """
     Joue une carte de la main.

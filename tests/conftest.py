@@ -1,3 +1,6 @@
+from mindbug_engine.core.consts import Difficulty
+from mindbug_engine.core.models import Card, CardEffect
+from mindbug_engine.engine import MindbugGame
 import pytest
 import sys
 import os
@@ -5,10 +8,6 @@ from unittest.mock import MagicMock
 
 # Ajout du dossier racine au path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from mindbug_engine.engine import MindbugGame
-from mindbug_engine.core.models import Card, CardEffect
-from mindbug_engine.core.consts import Difficulty
 
 
 class MockConfig:
@@ -34,11 +33,17 @@ def game():
     g = MindbugGame(config=cfg)
     g.start_game()
 
-    # 1. On vide le deck pour éviter que refill_hand() ne perturbe les tests de comptage
-    g.state.deck = []
+    # On boucle tant que le jeu est bloqué en phase d'initiative.
+    # Cela gère les cas d'égalité multiples (re-pioche) jusqu'à ce que les mains soient distribuées.
+    while g.state.phase == "INITIATIVE_BATTLE":
+        g.resolve_initiative_step()
 
-    # 2. On désactive les Mindbugs pour que PLAY déclenche l'effet immédiatement (Auto-Pass)
-    # Les tests qui vérifient le vol (Mindbug) devront remettre mindbugs=2 manuellement.
+    # 1. On vide TOUTES les zones de pioche pour éviter le remplissage auto pendant les tests
+    g.state.deck = []
+    g.state.player1.deck = []
+    g.state.player2.deck = []
+
+    # 2. On désactive les Mindbugs par défaut
     g.state.player1.mindbugs = 0
     g.state.player2.mindbugs = 0
 
@@ -52,11 +57,15 @@ def game_empty():
     g = MindbugGame(config=cfg)
     g.state.deck = []
     g.state.player1.hand = []
+    g.state.player1.deck = []
     g.state.player1.board = []
     g.state.player1.discard = []
+
     g.state.player2.hand = []
+    g.state.player2.deck = []
     g.state.player2.board = []
     g.state.player2.discard = []
+
     g.state.player1.hp = 3
     g.state.player2.hp = 3
     g.state.player1.mindbugs = 0
@@ -76,7 +85,8 @@ def create_card():
         if effects:
             final_effects = effects
         elif effect_type:
-            tgt = {"group": effect_target} if isinstance(effect_target, str) else (effect_target or {})
+            tgt = {"group": effect_target} if isinstance(
+                effect_target, str) else (effect_target or {})
             prm = effect_params or {}
             cnd = effect_condition or {}
             final_effects.append(CardEffect(effect_type, tgt, cnd, prm))

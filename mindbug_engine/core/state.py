@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, List, Optional, Any
+from typing import TYPE_CHECKING, List, Optional, Any, Tuple
 
 from mindbug_engine.core.consts import Phase
 
@@ -26,6 +26,8 @@ class GameState:
         self.turn_count = 1
         self.active_player_idx = 0
         self.phase = Phase.P1_MAIN
+
+        self.initiative_duel: Optional[Tuple[Card, Card]] = None
 
         # Gagnant de la partie (None tant que la partie est en cours)
         self.winner: Any = None

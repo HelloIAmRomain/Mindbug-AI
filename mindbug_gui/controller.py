@@ -16,6 +16,9 @@ class InputHandler:
         if is_ai_turn:
             return None
 
+        if game.state.phase == Phase.INITIATIVE_BATTLE:
+            return ("CONFIRM_INITIATIVE", -1)
+
         # Selection Phase (Effects)
         if game.state.phase == Phase.RESOLUTION_CHOICE:
             req = game.state.active_request

@@ -31,11 +31,10 @@ class TurnManager:
 
     def refill_hand(self, player):
         """
-        Complète la main du joueur jusqu'à 5 cartes en piochant dans le deck commun.
+        Complète la main du joueur jusqu'à 5 cartes en piochant dans SA pioche.
         """
-        # On s'assure d'utiliser self.state.deck
-        while len(player.hand) < 5 and len(self.state.deck) > 0:
-            card = self.state.deck.pop()
+        while len(player.hand) < 5 and len(player.deck) > 0:
+            card = player.deck.pop()
             player.hand.append(card)
             # log_debug(f"   -> {player.name} draws a card.")
 

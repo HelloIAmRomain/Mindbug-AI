@@ -48,7 +48,6 @@ def test_effect_modify_stat_set(game_empty, create_card):
                         params={"stat": "HP", "amount": 1, "operation": "SET"})
     card = create_card(name="Mosquito", effects=[effect])
 
-    # CORRECTION
     p1.board = [card]
 
     game.effect_manager.apply_effect(card, p1, p2)
@@ -67,7 +66,6 @@ def test_effect_destroy_target_choice(game_empty, create_card):
                         target={"group": "ANY", "zone": "BOARD", "count": 1, "select": "CHOICE_USER"})
     bomb = create_card(name="Bomb", effects=[effect])
 
-    # CORRECTION
     p1.board = [bomb]
 
     game.state.active_player_idx = 0
@@ -93,7 +91,6 @@ def test_effect_destroy_all_conditional(game_empty, create_card):
                         condition={"stat": "POWER", "operator": "LTE", "value": 4})
     rex = create_card(name="Rex", effects=[effect])
 
-    # CORRECTION
     p1.board = [rex]
 
     game.effect_manager.apply_effect(rex, p1, p2)
@@ -136,7 +133,6 @@ def test_effect_play_from_discard(game_empty, create_card):
                         target={"group": "OWNER", "zone": "DISCARD", "count": 1, "select": "CHOICE_USER"})
     draco = create_card(name="Draco", effects=[effect])
 
-    # CORRECTION
     p1.board = [draco]
 
     game.effect_manager.apply_effect(draco, p1, game.state.player2)

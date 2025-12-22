@@ -35,7 +35,9 @@ def test_create_deck_with_active_sets_and_sampling(monkeypatch, tmp_path):
     # If no active_sets provided, first sorted key should be 'ALPHA'
     game_deck, candidates, used_sets = df.create_deck()
     assert len(candidates) >= 25
-    assert len(game_deck) == 20  # sampled to 20
+
+    # On attend 22 cartes (20 jeu + 2 initiative)
+    assert len(game_deck) == 22
     assert "ALPHA" in used_sets
 
     # Providing explicit active_sets filters to that set

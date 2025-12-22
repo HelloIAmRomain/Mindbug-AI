@@ -46,6 +46,7 @@ class MindbugGame:
         self.deck_factory = DeckFactory(PATH_DATA)
 
         # Création du deck basé sur les sets actifs de la configuration
+        # Note: DeckFactory doit être configuré pour demander 22 cartes (20 + 2 pour initiative)
         game_deck, all_cards_ref, used_sets = self.deck_factory.create_deck(
             active_sets=self.config.active_sets
         )
@@ -77,39 +78,111 @@ class MindbugGame:
             log_info(f"🤖 Difficulté IA : {self.config.ai_difficulty.value}")
 
     def start_game(self):
-        """Démarre la partie : Mélange, Distribution et Reset des stats."""
+        """
+        Démarre la partie :
+        1. Phase d'Initiative (Duel de 2 cartes).
+        2. Distribution (Mains + Pioches Perso) après résolution.
+        """
         if not self.state.deck:
             log_error("Impossible de démarrer : Le deck est vide.")
             return
 
         if self.verbose:
             log_info(
-                f"🎲 Démarrage de la partie... Deck: {len(self.state.deck)} cartes.")
+                f"🎲 Démarrage... Deck Global: {len(self.state.deck)} cartes.")
 
+        # 1. Mélange initial
         random.shuffle(self.state.deck)
 
-        self.state.player1.hand = []
-        self.state.player2.hand = []
-
-        for _ in range(5):
-            if self.state.deck:
-                self.state.player1.hand.append(self.state.deck.pop())
-            if self.state.deck:
-                self.state.player2.hand.append(self.state.deck.pop())
-
-        self.state.turn_count = 1
-        self.state.active_player_idx = 0
-        self.state.phase = Phase.P1_MAIN
-        self.state.winner = None
-
+        # 2. Reset des joueurs
         for p in self.state.players:
-            p.hp = 3
-            p.mindbugs = 2
+            p.hand = []
+            p.deck = []
             p.board = []
             p.discard = []
+            p.hp = 3
+            p.mindbugs = 2
+
+        # 3. Lancement de la séquence d'initiative
+        # On a besoin d'au moins 22 cartes (20 jeu + 2 décision)
+        if len(self.state.deck) >= 22:
+            self.state.phase = Phase.INITIATIVE_BATTLE
+            self._draw_initiative_cards()
+            log_info("🎲 Phase Initiative : En attente de résolution...")
+        else:
+            # Fallback (Deck trop petit, ex: tests) : P1 commence direct
+            log_info(
+                "⚠️ Deck < 22 cartes. Règle d'initiative ignorée (P1 commence).")
+            self._distribute_and_start(starter_idx=0)
+
+    def _draw_initiative_cards(self):
+        """Pioche 2 cartes pour le duel."""
+        c1 = self.state.deck.pop()  # Pour P1
+        c2 = self.state.deck.pop()  # Pour P2
+        self.state.initiative_duel = (c1, c2)
+        log_info(
+            f"⚔️ Duel : P1 tire {c1.name} ({c1.power}) vs P2 tire {c2.name} ({c2.power})")
+
+    def resolve_initiative_step(self):
+        """
+        Appelé via la commande CONFIRM_INITIATIVE (clic bouton/écran).
+        Gère la résolution du duel : Égalité ou Victoire.
+        """
+        if not self.state.initiative_duel:
+            return
+
+        c1, c2 = self.state.initiative_duel
+
+        # Cas 1 : Égalité -> On remet et on recommence
+        if c1.power == c2.power:
+            log_info("   -> ÉGALITÉ ! Remélange...")
+            self.state.deck.append(c1)
+            self.state.deck.append(c2)
+            random.shuffle(self.state.deck)
+            self._draw_initiative_cards()  # On repioche immédiatement pour affichage
+            return
+
+        # Cas 2 : Vainqueur trouvé
+        winner_idx = 0 if c1.power > c2.power else 1
+        log_info(
+            f"   -> {'P1' if winner_idx == 0 else 'P2'} gagne l'initiative !")
+
+        # Les cartes du duel sont définitivement écartées (ni deck, ni défausse)
+        self.state.initiative_duel = None
+
+        # On lance la vraie partie
+        self._distribute_and_start(winner_idx)
+
+    def _distribute_and_start(self, starter_idx):
+        """Distribution finale et démarrage du jeu."""
+        p1 = self.state.player1
+        p2 = self.state.player2
+
+        # 1. Distribution des MAINS (5 cartes chacun)
+        for _ in range(5):
+            if self.state.deck:
+                p1.hand.append(self.state.deck.pop())
+            if self.state.deck:
+                p2.hand.append(self.state.deck.pop())
+
+        # 2. Distribution des PIOCHES PERSONNELLES (5 cartes chacun)
+        while self.state.deck:
+            if len(p1.deck) < 5:
+                p1.deck.append(self.state.deck.pop())
+            elif len(p2.deck) < 5:
+                p2.deck.append(self.state.deck.pop())
+            else:
+                break  # Sécurité
+
+        self.state.turn_count = 1
+        self.state.active_player_idx = starter_idx
+        self.state.phase = Phase.P1_MAIN if starter_idx == 0 else Phase.P2_MAIN
+        self.state.winner = None
 
         if self.verbose:
-            log_info("✅ Partie prête. Tour du Joueur 1.")
+            log_info(
+                f"✅ Partie lancée. Joueur actif : {self.state.active_player.name}")
+            log_info(f"   P1 Deck: {len(p1.deck)}, P2 Deck: {len(p2.deck)}")
 
     def step(self, action_type: str, index: int = -1):
         if self.state.winner:
@@ -144,6 +217,7 @@ class MindbugGame:
         ap = self.state.active_player
         phase = self.state.phase
 
+        # --- FIX FRENZY (State Persistence) ---
         if self.state.frenzy_candidate:
             # On vérifie si la carte est toujours en jeu (sur un board)
             in_p1 = self.state.frenzy_candidate in self.state.player1.board
@@ -156,7 +230,6 @@ class MindbugGame:
                     idx = ap.board.index(self.state.frenzy_candidate)
                     return [("ATTACK", idx)]
                 # Sinon (tour adversaire pour bloquer), on garde le frenzy_candidate actif
-                # sans proposer de coup d'attaque pour le défenseur
             else:
                 # Carte disparue
                 self.state.frenzy_candidate = None
@@ -194,6 +267,10 @@ class MindbugGame:
                 add_indices(opp_selector.hand, "SELECT_OPP_HAND")
                 add_indices(opp_selector.board, "SELECT_OPP_BOARD")
                 add_indices(opp_selector.discard, "SELECT_OPP_DISCARD")
+
+        elif phase == Phase.INITIATIVE_BATTLE:
+            # Seule action possible : Confirmer/Continuer
+            pass
 
         return moves
 
@@ -266,7 +343,7 @@ class MindbugGame:
             self.turn_manager.switch_active_player()
             self.state.phase = Phase.P1_MAIN if self.state.active_player_idx == 0 else Phase.P2_MAIN
 
-            # --- AUTO ATTACK (Correction UX) ---
+            # AUTO ATTACK frenzy
             # On déclare immédiatement la seconde attaque pour éviter un clic inutile
             try:
                 att_idx = att_owner.board.index(attacker)
@@ -314,7 +391,6 @@ class MindbugGame:
         Crée une copie profonde et légère du jeu pour la simulation IA.
         Optimisé via pickle et __getstate__.
         """
-        # Création d'une coquille vide (plus rapide que __init__)
         new_game = MindbugGame.__new__(MindbugGame)
         new_game.verbose = False
 
