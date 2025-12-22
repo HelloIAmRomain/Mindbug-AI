@@ -48,9 +48,9 @@ def test_init_displays_correct_label(mock_app):
     screen = SettingsScreen(mock_app)
 
     # Recherche du bouton via l'action standardisée
-    btn = next(w for w in screen.widgets if getattr(w, 'action', '') == "CYCLE_DIFF")
+    btn = next(w for w in screen.widgets if getattr(
+        w, 'action', '') == "CYCLE_DIFF")
 
-    # CORRECTION ICI : On vérifie "INTERMÉDIAIRE" au lieu de "MOYEN"
     assert "INTERMÉDIAIRE" in btn.text
 
 
@@ -86,6 +86,7 @@ def test_toggles_initial_state(mock_app):
     screen = SettingsScreen(mock_app)
 
     # On cherche le toggle debug
-    tg = next(w for w in screen.widgets if getattr(w, 'action', '') == "TOGGLE_DEBUG")
+    tg = next(w for w in screen.widgets if getattr(
+        w, 'action', '') == "TOGGLE_DEBUG")
 
     assert tg.value is True

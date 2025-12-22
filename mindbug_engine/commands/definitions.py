@@ -73,7 +73,7 @@ class AttackCommand(Command):
         if Keyword.HUNTER in attacker.keywords and has_targets:
             log_info(f"> 🏹 HUNTER triggers : {ap.name} chooses the blocker.")
 
-            # CORRECTION IA : Utilisation de partial et méthode statique pour être "Picklable"
+            # Utilisation de partial et méthode statique pour être "Picklable"
             callback = partial(self._on_hunter_target_selected, game)
 
             # On injecte l'option spéciale "NO_HUNT" dans les choix possibles

@@ -13,9 +13,10 @@ def test_effect_modify_stat_heal(game_empty, create_card):
                         params={"stat": "HP", "amount": 2, "operation": "ADD"})
 
     # On précise le trigger car certains effets dépendent du contexte
-    card = create_card(name="Healer", effects=[effect], trigger=Trigger.ON_PLAY)
+    card = create_card(name="Healer", effects=[
+                       effect], trigger=Trigger.ON_PLAY)
 
-    # CORRECTION : La carte doit être quelque part (ici jouée depuis la main ou arrivant sur le board)
+    # La carte doit être quelque part (ici jouée depuis la main ou arrivant sur le board)
     p1.board.append(card)
 
     game.effect_manager.apply_effect(card, p1, game.state.player2)
@@ -31,7 +32,7 @@ def test_effect_modify_stat_damage(game_empty, create_card):
                         params={"stat": "HP", "amount": 1, "operation": "SUB"})
     card = create_card(name="Sniper", effects=[effect])
 
-    # CORRECTION : La carte doit être sur le plateau
+    # La carte doit être sur le plateau
     p1.board = [card]
 
     game.effect_manager.apply_effect(card, p1, p2)
@@ -110,11 +111,12 @@ def test_effect_steal_board(game_empty, create_card):
     p2.board = [target]
 
     effect = CardEffect(EffectType.STEAL,
-                        target={"group": "ENEMIES", "zone": "BOARD", "count": 1, "select": "CHOICE_USER"},
+                        target={"group": "ENEMIES", "zone": "BOARD",
+                                "count": 1, "select": "CHOICE_USER"},
                         condition={"stat": "POWER", "operator": "GTE", "value": 6})
     fly = create_card(name="Fly", effects=[effect])
 
-    # CORRECTION : La mouche est à P1
+    # La mouche est à P1
     p1.board = [fly]
 
     game.effect_manager.apply_effect(fly, p1, p2)
@@ -155,7 +157,8 @@ def test_effect_discard_random(game_empty, create_card):
 
     effect = CardEffect(
         EffectType.DISCARD,
-        target={"group": "OPPONENT", "zone": "HAND", "count": 1, "select": "RANDOM"}
+        target={"group": "OPPONENT", "zone": "HAND",
+                "count": 1, "select": "RANDOM"}
     )
 
     elephant = create_card(name="Elephant", effects=[effect])

@@ -96,7 +96,7 @@ def test_fix_hunter_turn_loop(game):
     """
     Vérifie le correctif du Hunter :
     Après avoir choisi une cible et résolu le combat, le tour DOIT passer à l'adversaire.
-    (Avant correction : P1 rejouait immédiatement).
+    (Avant P1 rejouait immédiatement).
     """
     p1 = game.state.player1
     p2 = game.state.player2

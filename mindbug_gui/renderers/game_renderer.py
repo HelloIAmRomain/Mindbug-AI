@@ -41,7 +41,7 @@ class GameRenderer:
 
         # 2. HUD & Info
         self._draw_hud(surface, game_state)
-        self._draw_pile_counts(surface, game_state)
+        self._draw_pile_counts(surface, game_state, ui_context)
 
         # 3. Overlays (Dim background for selection or inspection)
         if game_state.active_request or ui_context.get("viewing_discard_pile"):
@@ -52,11 +52,9 @@ class GameRenderer:
             self._draw_debug_zones(surface, ui_context.get("zones", {}))
 
         # 5. Card Rendering (Bottom Layer)
-        # Draw all cards except the one being dragged
         card_views = ui_context.get("card_views", [])
         dragged_cv = ui_context.get("dragged_card_view")
 
-        # Ghost Placeholder Feedback
         if dragged_cv and ui_context.get("hovered_zone_id"):
             self._draw_ghost_placeholder(
                 surface, ui_context.get("current_ghost_rect"))
@@ -111,24 +109,32 @@ class GameRenderer:
         surface.blit(font.render(
             f"{p1.name} | PV: {p1.hp} | MB: {p1.mindbugs}", True, col_p1), (120, self.height - 40))
 
-    def _draw_pile_counts(self, surface, state):
-        font = self.res.get_font(24, bold=True)
-        h_card = self.height * layout.CARD_HEIGHT_PERCENT
-        w_card = h_card * layout.CARD_ASPECT_RATIO
-        margin_x = self.width * layout.PILE_MARGIN_PERCENT
+    def _draw_pile_counts(self, surface, state, ui_context):
+        """Affiche le nombre de cartes restantes sur les pioches."""
+        font = self.res.get_font(36, bold=True)
+        zones = ui_context.get("zones", {})
 
-        def draw_count(count, is_p1):
-            cy = (self.height * layout.P1_PILE_Y_PERCENT) if is_p1 else (
-                self.height * layout.P2_PILE_Y_PERCENT)
-            cy += h_card / 2
-            cx = self.width - margin_x - (w_card / 2)
-            txt = font.render(str(count), True, TEXT_PRIMARY)
+        def draw_deck_counter(deck, zone_id):
+            if not deck:
+                return
+            zone = zones.get(zone_id)
+            if not zone:
+                return
+
+            # Position au centre de la zone de deck
+            cx, cy = zone.rect.center
+
+            # Effet d'ombre pour lisibilité
+            txt_shadow = font.render(str(len(deck)), True, (0, 0, 0))
+            surface.blit(txt_shadow, txt_shadow.get_rect(
+                center=(cx + 2, cy + 2)))
+
+            txt = font.render(str(len(deck)), True, TEXT_PRIMARY)
             surface.blit(txt, txt.get_rect(center=(cx, cy)))
 
-        if state.player1.deck:
-            draw_count(len(state.player1.deck), True)
-        if state.player2.deck:
-            draw_count(len(state.player2.deck), False)
+        # On affiche le compteur sur la zone réelle
+        draw_deck_counter(state.player1.deck, "DECK_P1")
+        draw_deck_counter(state.player2.deck, "DECK_P2")
 
     def _draw_curtain(self, surface, player_name):
         surface.fill(BG_COLOR)

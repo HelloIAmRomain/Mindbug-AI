@@ -4,7 +4,6 @@ from mindbug_engine.core.models import Card, CardEffect
 from mindbug_engine.core.consts import Phase, Trigger, EffectType, Keyword
 
 
-
 # =============================================================================
 # 01 - Dr Axolotl : Jouer : Gagnez 2PV.
 # =============================================================================
@@ -13,7 +12,8 @@ def test_01_dr_axolotl(game):
     p1.hp = 1
     effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OWNER"},
                         params={"stat": "HP", "amount": 2, "operation": "ADD"})
-    card = Card("01", "Axolotl", 4, keywords=["POISON"], trigger=Trigger.ON_PLAY, effects=[effect])
+    card = Card("01", "Axolotl", 4, keywords=[
+                "POISON"], trigger=Trigger.ON_PLAY, effects=[effect])
 
     p1.hand = [card]
     game.state.active_player_idx = 0
@@ -51,7 +51,8 @@ def test_02_oursabeille(game):
 def test_03_neuromouche(game):
     p1, p2 = game.state.player1, game.state.player2
     effect = CardEffect(EffectType.STEAL,
-                        target={"group": "ENEMIES", "zone": "BOARD", "count": 1, "select": "CHOICE_USER"},
+                        target={"group": "ENEMIES", "zone": "BOARD",
+                                "count": 1, "select": "CHOICE_USER"},
                         condition={"stat": "POWER", "operator": "GTE", "value": 6})
     card = Card("03", "Mouche", 4, trigger=Trigger.ON_PLAY, effects=[effect])
 
@@ -80,7 +81,8 @@ def test_04_reptireur(game):
     p2.hp = 3
     effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OPPONENT"},
                         params={"stat": "HP", "amount": 1, "operation": "SUB"})
-    card = Card("04", "Reptireur", 1, keywords=["SNEAKY"], trigger=Trigger.ON_ATTACK, effects=[effect])
+    card = Card("04", "Reptireur", 1, keywords=[
+                "SNEAKY"], trigger=Trigger.ON_ATTACK, effects=[effect])
 
     p1.board = [card]
     game.state.active_player_idx = 0
@@ -96,7 +98,8 @@ def test_05_dracompost(game):
     p1 = game.state.player1
     effect = CardEffect(EffectType.PLAY,
                         target={"group": "OWNER", "zone": "DISCARD", "count": 1, "select": "CHOICE_USER"})
-    card = Card("05", "Dracompost", 3, keywords=["HUNTER"], trigger=Trigger.ON_PLAY, effects=[effect])
+    card = Card("05", "Dracompost", 3, keywords=[
+                "HUNTER"], trigger=Trigger.ON_PLAY, effects=[effect])
 
     dead = Card("d", "Dead", 5)
     p1.discard = [dead]
@@ -116,14 +119,17 @@ def test_06_veuve_noire(game):
     p1, p2 = game.state.player1, game.state.player2
 
     # Veuve chez P1
-    ban_effect = CardEffect(EffectType.BAN, target={"group": "OPPONENT"}, params={"action": "TRIGGER_ON_PLAY"})
-    veuve = Card("06", "Veuve", 2, keywords=["POISON"], trigger=Trigger.PASSIVE, effects=[ban_effect])
+    ban_effect = CardEffect(EffectType.BAN, target={"group": "OPPONENT"}, params={
+                            "action": "TRIGGER_ON_PLAY"})
+    veuve = Card("06", "Veuve", 2, keywords=[
+                 "POISON"], trigger=Trigger.PASSIVE, effects=[ban_effect])
     p1.board = [veuve]
 
     # P2 joue une carte avec effet
     heal_effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OWNER"},
                              params={"stat": "HP", "amount": 10, "operation": "ADD"})
-    healer = Card("h", "Healer", 1, trigger=Trigger.ON_PLAY, effects=[heal_effect])
+    healer = Card("h", "Healer", 1, trigger=Trigger.ON_PLAY,
+                  effects=[heal_effect])
     p2.hand = [healer]
 
     # On force le tour à P2
@@ -143,7 +149,8 @@ def test_07_pachypoulpe(game):
     p1, p2 = game.state.player1, game.state.player2
     effect = CardEffect(EffectType.BAN, target={"group": "ENEMIES"},
                         condition={"stat": "POWER", "operator": "LTE", "value": 4}, params={"action": "BLOCK"})
-    card = Card("07", "Pachy", 7, keywords=["TOUGH"], trigger=Trigger.PASSIVE, effects=[effect])
+    card = Card("07", "Pachy", 7, keywords=[
+                "TOUGH"], trigger=Trigger.PASSIVE, effects=[effect])
 
     weak = Card("w", "Weak", 4)
     strong = Card("s", "Strong", 5)
@@ -165,7 +172,8 @@ def test_08_crapaud_bombe(game):
     p1, p2 = game.state.player1, game.state.player2
     effect = CardEffect(EffectType.DESTROY,
                         target={"group": "ANY", "zone": "BOARD", "count": 1, "select": "CHOICE_USER"})
-    card = Card("08", "Crapaud", 5, keywords=["FRENZY"], trigger=Trigger.ON_DEATH, effects=[effect])
+    card = Card("08", "Crapaud", 5, keywords=[
+                "FRENZY"], trigger=Trigger.ON_DEATH, effects=[effect])
 
     victim = Card("v", "Victim", 2)
     p1.board = [card]
@@ -194,7 +202,8 @@ def test_09_furet_saboteur(game):
     # NOTE : Assurez-vous d'avoir ajouté "zone": "HAND" dans le JSON/Card setup si vous n'utilisez pas le loader
     effect = CardEffect(EffectType.DISCARD,
                         target={"group": "OPPONENT", "zone": "HAND", "count": 2, "select": "CHOICE_OPP"})
-    card = Card("09", "Furet", 2, keywords=["SNEAKY"], trigger=Trigger.ON_PLAY, effects=[effect])
+    card = Card("09", "Furet", 2, keywords=[
+                "SNEAKY"], trigger=Trigger.ON_PLAY, effects=[effect])
 
     c1, c2, c3 = Card("1", "1", 1), Card("2", "2", 1), Card("3", "3", 1)
     p2.hand = [c1, c2, c3]
@@ -206,14 +215,13 @@ def test_09_furet_saboteur(game):
     # C'est à l'adversaire (P2) de choisir
     assert game.state.active_request.selector == p2
 
-    # CORRECTION : On sélectionne deux indices DIFFÉRENTS
+    # On sélectionne deux indices DIFFÉRENTS
     # (La main ne change pas tant que la sélection n'est pas validée)
     game.step("SELECT_HAND", 0)  # Choisit c1
     game.step("SELECT_HAND", 1)  # Choisit c2
 
     assert len(p2.hand) == 1
     assert len(p2.discard) == 2
-
 
 
 # =============================================================================
@@ -243,7 +251,8 @@ def test_11_goblin_garou(game):
     p1 = game.state.player1
     effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "SELF"}, condition={"context": "MY_TURN"},
                         params={"stat": "POWER", "amount": 6, "operation": "ADD"})
-    card = Card("11", "Gob", 2, keywords=["HUNTER"], trigger=Trigger.PASSIVE, effects=[effect])
+    card = Card("11", "Gob", 2, keywords=[
+                "HUNTER"], trigger=Trigger.PASSIVE, effects=[effect])
     p1.board = [card]
 
     game.state.active_player_idx = 0  # Tour P1
@@ -270,7 +279,8 @@ def test_13_pilleur(game):
     p1, p2 = game.state.player1, game.state.player2
     effect = CardEffect(EffectType.PLAY,
                         target={"group": "OPPONENT", "zone": "DISCARD", "count": 1, "select": "CHOICE_USER"})
-    card = Card("13", "Pilleur", 7, keywords=["TOUGH"], trigger=Trigger.ON_PLAY, effects=[effect])
+    card = Card("13", "Pilleur", 7, keywords=[
+                "TOUGH"], trigger=Trigger.ON_PLAY, effects=[effect])
 
     dead = Card("d", "Dead", 5)
     p2.discard = [dead]
@@ -289,7 +299,8 @@ def test_13_pilleur(game):
 def test_14_mamie_harpie(game):
     p1, p2 = game.state.player1, game.state.player2
     effect = CardEffect(EffectType.STEAL,
-                        target={"group": "ENEMIES", "zone": "BOARD", "count": 2, "select": "CHOICE_USER"},
+                        target={"group": "ENEMIES", "zone": "BOARD",
+                                "count": 2, "select": "CHOICE_USER"},
                         condition={"stat": "POWER", "operator": "LTE", "value": 5})
     card = Card("14", "Mamie", 5, trigger=Trigger.ON_DEATH, effects=[effect])
 
@@ -317,7 +328,8 @@ def test_15_kangou(game):
                         condition={"stat": "POWER", "operator": "LTE", "value": 4})
     card = Card("15", "Kangou", 7, trigger=Trigger.ON_PLAY, effects=[effect])
 
-    weak1, weak2, strong = Card("w1", "1", 3), Card("w2", "2", 4), Card("s", "3", 5)
+    weak1, weak2, strong = Card("w1", "1", 3), Card(
+        "w2", "2", 4), Card("s", "3", 5)
     p2.board = [weak1, weak2, strong]
     p1.hand = [card]
 
@@ -337,7 +349,8 @@ def test_16_abeille(game):
     p2.hp = 3
     effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "OPPONENT"},
                         params={"stat": "HP", "amount": 1, "operation": "SUB"})
-    card = Card("16", "Abeille", 5, keywords=["HUNTER"], trigger=Trigger.ON_PLAY, effects=[effect])
+    card = Card("16", "Abeille", 5, keywords=[
+                "HUNTER"], trigger=Trigger.ON_PLAY, effects=[effect])
 
     p1.hand = [card]
     game.state.active_player_idx = 0
@@ -354,7 +367,8 @@ def test_17_yeti(game):
                       params={"stat": "POWER", "amount": 5, "operation": "ADD"})
     eff2 = CardEffect(EffectType.ADD_KEYWORD, target={"group": "SELF"}, condition={"context": "IS_ALONE"},
                       params={"keywords": ["FRENZY"]})
-    card = Card("17", "Yeti", 5, keywords=["TOUGH"], trigger=Trigger.PASSIVE, effects=[eff1, eff2])
+    card = Card("17", "Yeti", 5, keywords=[
+                "TOUGH"], trigger=Trigger.PASSIVE, effects=[eff1, eff2])
 
     p1.board = [card]
     game.update_board_states()
@@ -418,9 +432,11 @@ def test_21_rhino(game):
 def test_22_requin_toutou(game):
     p1, p2 = game.state.player1, game.state.player2
     effect = CardEffect(EffectType.DESTROY,
-                        target={"group": "ENEMIES", "zone": "BOARD", "count": 1, "select": "CHOICE_USER"},
+                        target={"group": "ENEMIES", "zone": "BOARD",
+                                "count": 1, "select": "CHOICE_USER"},
                         condition={"stat": "POWER", "operator": "GTE", "value": 6})
-    card = Card("22", "Toutou", 4, keywords=["HUNTER"], trigger=Trigger.ON_ATTACK, effects=[effect])
+    card = Card("22", "Toutou", 4, keywords=[
+                "HUNTER"], trigger=Trigger.ON_ATTACK, effects=[effect])
 
     target = Card("t", "Target", 6)
     p1.board = [card]
@@ -439,7 +455,8 @@ def test_22_requin_toutou(game):
 # =============================================================================
 def test_23_requin_crabe(game):
     p1, p2 = game.state.player1, game.state.player2
-    effect = CardEffect(EffectType.COPY_KEYWORDS, target={"group": "SELF"}, params={"source": "ENEMIES"})
+    effect = CardEffect(EffectType.COPY_KEYWORDS, target={
+                        "group": "SELF"}, params={"source": "ENEMIES"})
     card = Card("23", "Crabe", 5, trigger=Trigger.PASSIVE, effects=[effect])
 
     enemy = Card("e", "Enemy", 5, keywords=["POISON", "FRENZY"])
@@ -463,7 +480,8 @@ def test_24_scarabouclier(game):
     p1 = game.state.player1
     effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "ALL_OTHER_ALLIES"},
                         params={"stat": "POWER", "amount": 1, "operation": "ADD"})
-    scara = Card("24", "Scara", 4, keywords=["TOUGH"], trigger=Trigger.PASSIVE, effects=[effect])
+    scara = Card("24", "Scara", 4, keywords=[
+                 "TOUGH"], trigger=Trigger.PASSIVE, effects=[effect])
 
     other = Card("o", "Other", 2)
     p1.board = [scara, other]
@@ -483,7 +501,8 @@ def test_25_hydrescargot(game):
     card = Card("25", "Hydra", 9, trigger=Trigger.ON_ATTACK, effects=[effect])
 
     p1.board = [card]
-    p2.board = [Card("1", "1", 1), Card("2", "2", 1)]  # 1 vs 2 -> Condition Vraie
+    p2.board = [Card("1", "1", 1), Card("2", "2", 1)
+                ]  # 1 vs 2 -> Condition Vraie
 
     game.state.active_player_idx = 0
     game.step("ATTACK", 0)
@@ -500,9 +519,11 @@ def test_25_hydrescargot(game):
 def test_26_lanceur(game):
     p1 = game.state.player1
     effect = CardEffect(EffectType.ADD_KEYWORD, target={"group": "ALL_OTHER_ALLIES"},
-                        condition={"stat": "POWER", "operator": "LTE", "value": 4},
+                        condition={"stat": "POWER",
+                                   "operator": "LTE", "value": 4},
                         params={"keywords": ["HUNTER", "POISON"]})
-    lanceur = Card("26", "Lanceur", 1, keywords=["POISON"], trigger=Trigger.PASSIVE, effects=[effect])
+    lanceur = Card("26", "Lanceur", 1, keywords=[
+                   "POISON"], trigger=Trigger.PASSIVE, effects=[effect])
 
     weak = Card("w", "Weak", 4)
     p1.board = [lanceur, weak]
@@ -531,7 +552,8 @@ def test_28_baril(game):
     # On vide la main de P1 pour que le compte final soit exact (0 + 2 = 2)
     p1.hand = []
 
-    effect = CardEffect(EffectType.STEAL, target={"group": "OPPONENT", "zone": "HAND", "count": 2, "select": "RANDOM"})
+    effect = CardEffect(EffectType.STEAL, target={
+                        "group": "OPPONENT", "zone": "HAND", "count": 2, "select": "RANDOM"})
     card = Card("28", "Baril", 6, trigger=Trigger.ON_DEATH, effects=[effect])
 
     p2.hand = [Card("1", "1", 1), Card("2", "2", 1), Card("3", "3", 1)]
@@ -550,9 +572,11 @@ def test_28_baril(game):
 def test_29_tigrecureuil(game):
     p1, p2 = game.state.player1, game.state.player2
     effect = CardEffect(EffectType.DESTROY,
-                        target={"group": "ANY", "zone": "BOARD", "count": 1, "select": "CHOICE_USER"},
+                        target={"group": "ANY", "zone": "BOARD",
+                                "count": 1, "select": "CHOICE_USER"},
                         condition={"stat": "POWER", "operator": "GTE", "value": 7})
-    card = Card("29", "Tigre", 3, keywords=["SNEAKY"], trigger=Trigger.ON_PLAY, effects=[effect])
+    card = Card("29", "Tigre", 3, keywords=[
+                "SNEAKY"], trigger=Trigger.ON_PLAY, effects=[effect])
 
     target = Card("t", "Target", 7)
     p2.board = [target]
@@ -586,8 +610,10 @@ def test_30_turboustique(game):
 # =============================================================================
 def test_31_huisselephant(game):
     p1, p2 = game.state.player1, game.state.player2
-    effect = CardEffect(EffectType.DISCARD, target={"group": "OPPONENT", "zone": "HAND", "count": 1, "select": "RANDOM"})
-    card = Card("31", "Huissier", 8, trigger=Trigger.ON_ATTACK, effects=[effect])
+    effect = CardEffect(EffectType.DISCARD, target={
+                        "group": "OPPONENT", "zone": "HAND", "count": 1, "select": "RANDOM"})
+    card = Card("31", "Huissier", 8,
+                trigger=Trigger.ON_ATTACK, effects=[effect])
 
     p2.hand = [Card("1", "1", 1)]
     p1.board = [card]
@@ -604,7 +630,8 @@ def test_32_oursins(game):
     p1 = game.state.player1
     effect = CardEffect(EffectType.MODIFY_STAT, target={"group": "ALLIES"}, condition={"context": "MY_TURN"},
                         params={"stat": "POWER", "amount": 2, "operation": "ADD"})
-    card = Card("32", "Oursins", 5, keywords=["HUNTER"], trigger=Trigger.PASSIVE, effects=[effect])
+    card = Card("32", "Oursins", 5, keywords=[
+                "HUNTER"], trigger=Trigger.PASSIVE, effects=[effect])
 
     ally = Card("a", "Ally", 1)
     p1.board = [card, ally]

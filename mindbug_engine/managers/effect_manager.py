@@ -88,7 +88,7 @@ class EffectManager:
         select_method = effect.target.get("select", "ALL")
         count = effect.target.get("count", 1)
 
-        # CORRECTION IA : Utilisation de partial au lieu d'une fonction locale
+        # Utilisation de partial au lieu d'une fonction locale
         # pour permettre la sérialisation (pickle) de l'état du jeu.
         callback = partial(self._resume_effect_resolution,
                            effect, source_card, owner, opponent)

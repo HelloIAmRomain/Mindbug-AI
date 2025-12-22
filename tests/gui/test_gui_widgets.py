@@ -1,14 +1,13 @@
+from mindbug_gui.widgets.card_view import CardView
+from mindbug_gui.widgets.buttons import Button
+from mindbug_engine.core.models import Card
+from unittest.mock import Mock, patch
+import pygame
+import pytest
 import os
 
 # On garde uniquement le driver VIDEO dummy pour le mode headless
 os.environ["SDL_VIDEODRIVER"] = "dummy"
-
-import pytest
-import pygame
-from unittest.mock import Mock, patch
-from mindbug_engine.core.models import Card
-from mindbug_gui.widgets.buttons import Button
-from mindbug_gui.widgets.card_view import CardView
 
 
 @pytest.fixture(scope="function")
@@ -35,7 +34,7 @@ def mock_resource_manager():
 # --- TESTS ---
 
 def test_button_interaction(pygame_setup):
-    # CORRECTION : Arguments w->width, h->height, action_id->action
+    # Arguments w->width, h->height, action_id->action
     btn = Button(
         x=0, y=0, width=100, height=50,
         text="Test",

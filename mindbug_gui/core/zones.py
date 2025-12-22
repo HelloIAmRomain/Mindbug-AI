@@ -15,9 +15,10 @@ class GameZone:
         self.layout_mode = layout_mode
         self.cards: List[Any] = []
 
-        # --- NOUVEAU : Gestion Drag & Drop ---
-        self.ghost_card: Optional[Any] = None  # Carte virtuelle ajoutée (placeholder)
-        self.ignored_card: Optional[Any] = None  # Carte réelle masquée (celle qu'on drag)
+        # Carte virtuelle ajoutée (placeholder)
+        self.ghost_card: Optional[Any] = None
+        # Carte réelle masquée (celle qu'on drag)
+        self.ignored_card: Optional[Any] = None
 
     def set_cards(self, cards: List[Any]):
         self.cards = cards if cards else []
@@ -69,7 +70,8 @@ class GameZone:
             offset = 2
             for i, card in enumerate(effective_cards):
                 current_offset = min(i, 5) * offset
-                r = pygame.Rect(self.rect.x + current_offset, start_y - current_offset, card_w, card_h)
+                r = pygame.Rect(self.rect.x + current_offset,
+                                start_y - current_offset, card_w, card_h)
                 results.append((card, r))
 
         elif self.layout_mode == "HORIZONTAL":
@@ -78,7 +80,8 @@ class GameZone:
 
             # Gestion du débordement (Overlap)
             if total_w > self.rect.width:
-                overlap = (total_w - self.rect.width) // (count - 1) if count > 1 else 0
+                overlap = (total_w - self.rect.width) // (count -
+                                                          1) if count > 1 else 0
                 gap -= overlap
                 total_w = self.rect.width
 
@@ -104,7 +107,6 @@ class GameZone:
 
 
 class ZoneManager:
-    # ... (Le reste de la classe reste inchangé, gardez votre méthode create_zones actuelle) ...
     @staticmethod
     def create_zones(screen_w: int, screen_h: int) -> Dict[str, GameZone]:
         zones = {}
@@ -112,28 +114,44 @@ class ZoneManager:
         margin_x = int(screen_w * 0.02)
         playable_w = screen_w - 2 * margin_x
 
+        # --- MAINS (Haut / Bas) ---
         y_hand_p2 = int(screen_h * layout.P2_HAND_Y_PERCENT) - 10
-        zones["HAND_P2"] = GameZone("HAND_P2", pygame.Rect(margin_x, y_hand_p2, playable_w, zone_h))
-
-        y_board_p2 = int(screen_h * layout.P2_BOARD_Y_PERCENT)
-        zones["BOARD_P2"] = GameZone("BOARD_P2", pygame.Rect(margin_x, y_board_p2, playable_w, zone_h))
-
-        y_board_p1 = int(screen_h * layout.P1_BOARD_Y_PERCENT)
-        zones["BOARD_P1"] = GameZone("BOARD_P1", pygame.Rect(margin_x, y_board_p1, playable_w, zone_h))
+        zones["HAND_P2"] = GameZone("HAND_P2", pygame.Rect(
+            margin_x, y_hand_p2, playable_w, zone_h))
 
         y_hand_p1 = int(screen_h * layout.P1_HAND_Y_PERCENT)
-        zones["HAND_P1"] = GameZone("HAND_P1", pygame.Rect(margin_x, y_hand_p1, playable_w, zone_h))
+        zones["HAND_P1"] = GameZone("HAND_P1", pygame.Rect(
+            margin_x, y_hand_p1, playable_w, zone_h))
 
+        # --- PLATEAUX (Centrés) ---
+        y_board_p2 = int(screen_h * layout.P2_BOARD_Y_PERCENT)
+        zones["BOARD_P2"] = GameZone("BOARD_P2", pygame.Rect(
+            margin_x, y_board_p2, playable_w, zone_h))
+
+        y_board_p1 = int(screen_h * layout.P1_BOARD_Y_PERCENT)
+        zones["BOARD_P1"] = GameZone("BOARD_P1", pygame.Rect(
+            margin_x, y_board_p1, playable_w, zone_h))
+
+        # --- PILES (Alignées avec les Plateaux pour libérer les coins) ---
         pile_w = int(zone_h * layout.CARD_ASPECT_RATIO * 1.2)
-        zones["DISCARD_P1"] = GameZone("DISCARD_P1", pygame.Rect(margin_x, y_hand_p1 - 20, pile_w, zone_h), "STACK")
-        zones["DECK_P1"] = GameZone("DECK_P1",
-                                    pygame.Rect(screen_w - margin_x - pile_w, y_hand_p1 - 20, pile_w, zone_h), "STACK")
-        zones["DISCARD_P2"] = GameZone("DISCARD_P2", pygame.Rect(margin_x, y_hand_p2, pile_w, zone_h), "STACK")
-        zones["DECK_P2"] = GameZone("DECK_P2", pygame.Rect(screen_w - margin_x - pile_w, y_hand_p2, pile_w, zone_h),
-                                    "STACK")
 
+        # P1 : Défausse à gauche du Board P1, Pioche à droite du Board P1
+        # (On garde margin_x pour l'alignement global, mais visuellement c'est au niveau du board)
+        zones["DISCARD_P1"] = GameZone("DISCARD_P1", pygame.Rect(
+            margin_x, y_board_p1, pile_w, zone_h), "STACK")
+        zones["DECK_P1"] = GameZone("DECK_P1", pygame.Rect(
+            screen_w - margin_x - pile_w, y_board_p1, pile_w, zone_h), "STACK")
+
+        # P2 : Défausse à gauche du Board P2, Pioche à droite du Board P2
+        zones["DISCARD_P2"] = GameZone("DISCARD_P2", pygame.Rect(
+            margin_x, y_board_p2, pile_w, zone_h), "STACK")
+        zones["DECK_P2"] = GameZone("DECK_P2", pygame.Rect(
+            screen_w - margin_x - pile_w, y_board_p2, pile_w, zone_h), "STACK")
+
+        # --- ZONE CENTRALE (Combat) ---
         play_y = y_board_p2 + zone_h
         play_h = max(1, y_board_p1 - play_y)
-        zones["PLAY_AREA"] = GameZone("PLAY_AREA", pygame.Rect(margin_x, play_y, playable_w, play_h))
+        zones["PLAY_AREA"] = GameZone("PLAY_AREA", pygame.Rect(
+            margin_x, play_y, playable_w, play_h))
 
         return zones

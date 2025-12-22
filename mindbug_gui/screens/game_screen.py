@@ -127,7 +127,6 @@ class GameScreen(BaseScreen):
 
             if self.show_confirm_menu:
                 res = self._handle_modal_events(event, self.confirm_buttons)
-                # FIX BUG #1 : On ne return PAS None, sinon on casse la boucle d'événements
                 if res == "CONFIRM_YES":
                     return "MENU"
                 if res == "CONFIRM_NO":
@@ -220,7 +219,7 @@ class GameScreen(BaseScreen):
         # Note: active_player_idx == 1 signifie P2
         is_p2_active = (self.game.state.active_player_idx == 1)
 
-        # 2. FIX BUG #2 : Vérifions si l'IA doit répondre à une question (Selection)
+        # 2. Vérifions si l'IA doit répondre à une question (Selection)
         # Ex: "Furet Saboteur" joué par P1 -> P2 doit choisir quoi défausser
         req = self.game.state.active_request
         is_p2_selecting = (req is not None and req.selector ==
@@ -428,7 +427,7 @@ class GameScreen(BaseScreen):
             zone.clear_ghost()
             zone.unignore_cards()
 
-        # 3. Création du trou dans la zone d'origine (Ignorer la carte draguée)
+        # 3. Création du trou dans la zone d'origine
         for zone in self.zones.values():
             if card in zone.cards:
                 zone.ignore_card(card)
@@ -436,9 +435,23 @@ class GameScreen(BaseScreen):
 
         # 4. Ajout du fantôme dans la zone cible
         if self.hovered_zone_id:
-            self.zones[self.hovered_zone_id].set_ghost(card)
+            visual_zone_id = self.hovered_zone_id
 
-        # 5. Recalcul des positions des CardViews
+            # --- Redirection visuelle (PLAY_AREA -> BOARD) ---
+            if visual_zone_id == "PLAY_AREA":
+                if card in self.game.state.active_player.hand:
+                    is_p1 = (self.game.state.active_player ==
+                             self.game.state.player1)
+                    visual_zone_id = "BOARD_P1" if is_p1 else "BOARD_P2"
+                else:
+                    visual_zone_id = None
+
+            if visual_zone_id:
+                self.hovered_zone_id = visual_zone_id
+                if visual_zone_id in self.zones:
+                    self.zones[visual_zone_id].set_ghost(card)
+
+        # 5. Recalcul des positions
         self._update_card_positions_from_zones()
 
     def _clear_ghosts(self):

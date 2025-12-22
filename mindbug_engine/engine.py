@@ -144,7 +144,6 @@ class MindbugGame:
         ap = self.state.active_player
         phase = self.state.phase
 
-        # --- FIX FRENZY (State Persistence) ---
         if self.state.frenzy_candidate:
             # On vérifie si la carte est toujours en jeu (sur un board)
             in_p1 = self.state.frenzy_candidate in self.state.player1.board
