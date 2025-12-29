@@ -70,6 +70,7 @@ class Difficulty(str, Enum):
     EASY = "EASY"
     MEDIUM = "MEDIUM"
     HARD = "HARD"
+    EXTREME = "EXTREME"
 
 
 class CardStatus(str, Enum):

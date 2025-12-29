@@ -3,53 +3,66 @@ name: Build & Release Mindbug
 on:
   push:
     tags:
-      - 'v*' # Se déclenche sur les tags (ex: v1.0.0)
+      - 'v*' # Exemple: v1.0.0
 
 permissions:
-  contents: write
+  contents: write # Indispensable pour créer la Release GitHub
 
 jobs:
-  # JOBS 1 : TESTS
+  # ------------------------------------------------------------------
+  # JOB 1 : TESTS (Validation du code avant de compiler)
+  # ------------------------------------------------------------------
   test:
+    name: Run Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip' # Accélère les runs suivants
+          
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          
       - name: Run Tests
         run: |
           pytest tests/
 
-  # JOB 2 : BUILD WINDOWS & LINUX
+  # ------------------------------------------------------------------
+  # JOB 2 : COMPILATION (Multi-OS)
+  # ------------------------------------------------------------------
   build:
     needs: test
-    name: Build for ${{ matrix.os }}
+    name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # WINDOWS
           - os: windows-latest
-            sep: ';'                 # Séparateur de chemin Windows
-            original_name: MindbugAI.exe
-            final_name: MindbugAI-Windows.exe
+            sep: ';'                 # Windows utilise ; pour séparer les chemins --add-data
+            binary_name: MindbugAI-Windows
+            extension: .exe          # PyInstaller ajoutera .exe, on doit le prévoir pour l'upload
+          # LINUX
           - os: ubuntu-latest
-            sep: ':'                 # Séparateur de chemin Linux
-            original_name: MindbugAI
-            final_name: MindbugAI-Linux
+            sep: ':'                 # Linux utilise : pour séparer les chemins --add-data
+            binary_name: MindbugAI-Linux
+            extension: ''            # Pas d'extension sous Linux
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -58,49 +71,49 @@ jobs:
           pip install pyinstaller
 
       - name: Build with PyInstaller
-        # On garde le nom de base "MindbugAI" ici pour que PyInstaller soit prévisible
+        # --name définit le nom du fichier de sortie.
+        # Sous Windows, PyInstaller ajoutera AUTOMATIQUEMENT ".exe" à ce nom.
+        # On utilise matrix.sep pour que "--add-data" fonctionne sur les deux OS.
         run: |
-          pyinstaller main.py --onefile --noconsole --name MindbugAI --add-data "assets${{ matrix.sep }}assets" --add-data "data${{ matrix.sep }}data"
-
-      - name: Rename Binary
-        # C'est ici que la magie opère : on renomme le fichier généré
-        # 'mv' fonctionne sur Linux (bash) ET sur Windows (PowerShell)
-        run: |
-          mv dist/${{ matrix.original_name }} dist/${{ matrix.final_name }}
+          pyinstaller main.py --onefile --noconsole --name "${{ matrix.binary_name }}" --add-data "assets${{ matrix.sep }}assets" --add-data "data${{ matrix.sep }}data"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.final_name }} # Nom de l'artefact pour GitHub
-          path: dist/${{ matrix.final_name }}
+          # On donne un nom unique à l'artefact pour ne pas écraser l'autre (ex: binary-windows-latest)
+          name: binary-${{ matrix.os }} 
+          # On reconstruit le chemin attendu : dist/MindbugAI-Windows.exe ou dist/MindbugAI-Linux
+          path: dist/${{ matrix.binary_name }}${{ matrix.extension }}
+          if-no-files-found: error
 
-  # JOB 3 : RELEASE
+  # ------------------------------------------------------------------
+  # JOB 3 : CRÉATION DE LA RELEASE
+  # ------------------------------------------------------------------
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
-      # Téléchargement des artefacts (Windows)
-      - name: Download Windows Binary
-        uses: actions/download-artifact@v4
-        with:
-          name: MindbugAI-Windows.exe
-          path: ./release_files
+      - uses: actions/checkout@v4
 
-      # Téléchargement des artefacts (Linux)
-      - name: Download Linux Binary
+      # Cette étape est magique avec la v4 :
+      # Elle télécharge "binary-windows-latest" et "binary-ubuntu-latest"
+      # "merge-multiple: true" vide le contenu directement dans 'release_files' sans sous-dossiers.
+      - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: MindbugAI-Linux
-          path: ./release_files
+          path: release_files
+          pattern: binary-* # Télécharge uniquement les artefacts commençant par binary-
+          merge-multiple: true 
+
+      - name: List files (Verification)
+        run: ls -R release_files
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            ./release_files/MindbugAI-Windows.exe
-            ./release_files/MindbugAI-Linux
+            release_files/MindbugAI-Windows.exe
+            release_files/MindbugAI-Linux
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

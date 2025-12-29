@@ -55,21 +55,24 @@ def test_init_displays_correct_label(mock_app):
 
 
 def test_action_cycle_difficulty_states(mock_app, settings_screen):
-    """Vérifie le cycle : MEDIUM -> HARD -> EASY -> MEDIUM."""
+    """Vérifie le cycle : MEDIUM -> HARD -> EXTREME -> EASY -> MEDIUM."""
 
     # 1. Départ MEDIUM -> Clic -> HARD
     mock_app.config.ai_difficulty = Difficulty.MEDIUM
     settings_screen._cycle_difficulty()
     assert mock_app.config.ai_difficulty == Difficulty.HARD
 
-    # 2. Clic -> EASY
+    # 2. Clic -> EXTREME (Nouveau step)
+    settings_screen._cycle_difficulty()
+    assert mock_app.config.ai_difficulty == Difficulty.EXTREME
+
+    # 3. Clic -> EASY
     settings_screen._cycle_difficulty()
     assert mock_app.config.ai_difficulty == Difficulty.EASY
 
-    # 3. Clic -> MEDIUM
+    # 4. Clic -> MEDIUM
     settings_screen._cycle_difficulty()
     assert mock_app.config.ai_difficulty == Difficulty.MEDIUM
-
 
 def test_save_on_exit(mock_app, settings_screen):
     """Vérifie la sauvegarde en quittant avec ECHAP."""

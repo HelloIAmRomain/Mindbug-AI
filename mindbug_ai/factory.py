@@ -26,6 +26,8 @@ class AgentFactory:
                 time_budget = 1.5
             if difficulty == Difficulty.HARD:
                 time_budget = 3.0
+            if difficulty == Difficulty.EXTREME:
+                time_budget = 6.0
 
             return MCTSAgent(simulation_time=time_budget)
 
