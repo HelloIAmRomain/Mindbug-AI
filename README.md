@@ -76,6 +76,15 @@ Les cartes sont définies dans `data/cards.json`. Le moteur est agnostique : il 
 
 ## 🗺️ Roadmap & Améliorations Futures
 
+## ⚠️ Liste bugs
+
+- Défense avec une furie : la carte défenseuse ne doit pas attaquer 2 fois
+- Crapaud bombe :
+  - --> Ne tue pas coriace si elle a ses 2 PV.
+  - --> L'effet doit pouvoir se faire sur une carte alliée
+  - --> A vérifier si l'effet est obligatoire (ex : pas d'adversaire, dois-je sacrifier un allié?)
+- requin toutou : hunter ne fonctionne pas
+
 ### 🎨 Interface & Expérience Utilisateur (UX)
 
 - [X] **Drag & Drop :** Remplacer le système de clics par un glisser-déposer fluide des cartes.
