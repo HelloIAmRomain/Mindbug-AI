@@ -30,10 +30,10 @@ class GameRenderer:
 
         # 1. Blocking Modals
         if ui_context.get("error_message"):
-            self._draw_error_modal(
-                surface, ui_context["error_message"], ui_context.get("error_buttons", []))
+            self._draw_error_modal(surface, ui_context["error_message"], ui_context.get("error_buttons", []))
             return
 
+        # Phase d'initiative prioritaire
         if game_state.phase == "INITIATIVE_BATTLE" and hasattr(game_state, "initiative_duel") and game_state.initiative_duel:
             self._draw_initiative_screen(surface, game_state.initiative_duel)
             return
@@ -45,7 +45,7 @@ class GameRenderer:
         # 2. HUD
         self._draw_hud(surface, game_state)
 
-        # 3. Overlays
+        # 3. Overlays (Selection / Discard)
         if game_state.active_request or ui_context.get("viewing_discard_pile"):
             self._draw_overlay_bg(surface, ui_context)
 
@@ -58,8 +58,7 @@ class GameRenderer:
         dragged_cv = ui_context.get("dragged_card_view")
 
         if dragged_cv and ui_context.get("hovered_zone_id"):
-            self._draw_ghost_placeholder(
-                surface, ui_context.get("current_ghost_rect"))
+            self._draw_ghost_placeholder(surface, ui_context.get("current_ghost_rect"))
 
         for cv in card_views:
             if cv != dragged_cv:
@@ -71,25 +70,28 @@ class GameRenderer:
 
         self._draw_pile_counts(surface, game_state, ui_context)
 
-        # 7. UI Widgets
-        for btn in ui_context.get("ui_buttons", []):
-            btn.draw(surface)
-
-        # 8. Modals & Popups
-        if ui_context.get("show_confirm_menu"):
-            self._draw_confirm_modal(
-                surface, ui_context.get("confirm_buttons", []))
-
-        if ui_context.get("ai_thinking"):
-            self._draw_ai_loader(surface)
-
-        # 9. Zooms & Final Effects
+        # --- FIX : On dessine les Zooms AVANT les boutons ---
+        # 7. Zooms (Fond noir + Carte)
+        # Cela permet au fond noir de couvrir le plateau, mais pas les boutons qui seront dessinés ensuite.
         if game_state.pending_card and not game_state.winner:
             self._draw_pending_card_zoom(surface, game_state.pending_card)
 
         if ui_context.get("zoomed_card"):
             self._draw_zoomed_overlay(surface, ui_context["zoomed_card"])
 
+        # 8. UI Widgets (Boutons Mindbug / Pass)
+        # Maintenant dessinés PAR-DESSUS l'overlay de zoom
+        for btn in ui_context.get("ui_buttons", []):
+            btn.draw(surface)
+
+        # 9. Modals & Popups (Toujours au-dessus de tout)
+        if ui_context.get("show_confirm_menu"):
+            self._draw_confirm_modal(surface, ui_context.get("confirm_buttons", []))
+
+        if ui_context.get("ai_thinking"):
+            self._draw_ai_loader(surface)
+
+        # 10. Winner Overlay
         if game_state.winner:
             self._draw_winner_overlay(surface, game_state.winner.name)
 

@@ -2,18 +2,28 @@ import os
 import sys
 
 # --- CHEMIN DE BASE ---
-# Permet de situer le dossier racine du projet de manière fiable
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Détection automatique de l'environnement (Dev vs Exe)
+if getattr(sys, 'frozen', False):
+    # Mode EXE : On prend le dossier où se trouve l'exécutable
+    # Cela permet à settings.json d'être créé à côté de MindbugAI.exe
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Mode DEV : On prend le dossier du script python actuel
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def resource_path(relative_path):
     """
-    Permet de trouver les ressources (images/json) aussi bien en dev qu'en .exe (PyInstaller).
+    Permet de trouver les ressources internes (images/json) 
+    aussi bien en dev qu'en .exe (PyInstaller).
     """
     try:
         # PyInstaller crée un dossier temporaire et stocke le chemin dans _MEIPASS
+        # C'est ici que sont décompressés les assets inclus via --add-data
         base_path = sys._MEIPASS
     except Exception:
-        base_path = BASE_DIR
+        # En dev, on utilise le chemin relatif au projet
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        
     return os.path.join(base_path, relative_path)
 
 # --- CONFIGURATION INITIALE ---
@@ -59,11 +69,12 @@ COLOR_BORDER_NORMAL = (0, 0, 0)
 
 # --- CHEMINS ---
 
-# Chemin vers le JSON des données
+# Chemin vers le JSON des données (Interne -> resource_path)
 PATH_DATA = resource_path(os.path.join("data", "cards.json"))
 
-# Le ResourceManager se chargera d'aller chercher dans 'assets/cards' ou 'assets/fonts'
+# Chemin vers le dossier des assets (Interne -> resource_path)
 PATH_ASSETS = resource_path("assets")
 
-# Chemin du fichier de sauvegarde (Créé à la racine de l'exécution)
+# Chemin du fichier de sauvegarde (Externe -> BASE_DIR)
+# Ceci garantit que le fichier persiste à côté de l'exécutable
 PATH_SETTINGS = os.path.join(BASE_DIR, "settings.json")

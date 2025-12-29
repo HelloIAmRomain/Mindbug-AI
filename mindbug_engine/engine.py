@@ -46,7 +46,7 @@ class MindbugGame:
         self.deck_factory = DeckFactory(PATH_DATA)
 
         # Création du deck basé sur les sets actifs de la configuration
-        # Note: DeckFactory doit être configuré pour demander 22 cartes (20 + 2 pour initiative)
+        # DeckFactory doit être configuré pour demander 22 cartes (20 + 2 pour initiative)
         game_deck, all_cards_ref, used_sets = self.deck_factory.create_deck(
             active_sets=self.config.active_sets
         )

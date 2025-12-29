@@ -96,7 +96,11 @@ class ResourceManager:
     def _resource_path(self, relative_path):
         """Gère les chemins pour PyInstaller (exe) ou Dev."""
         try:
-            base_path = sys._MEIPASS
+            # En mode EXE, PyInstaller décompresse tout dans _MEIPASS.
+            # Comme on a inclus le dossier avec "assets;assets", il faut ajouter "assets" au chemin.
+            base_path = os.path.join(sys._MEIPASS, "assets")
         except Exception:
+            # En mode DEV (non compilé), on utilise le chemin relatif défini plus haut
             base_path = PATH_ASSETS
+            
         return os.path.join(base_path, relative_path)
