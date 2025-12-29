@@ -78,14 +78,14 @@ Les cartes sont définies dans `data/cards.json`. Le moteur est agnostique : il 
 
 ### 🎨 Interface & Expérience Utilisateur (UX)
 
-- [ ] **Drag & Drop :** Remplacer le système de clics par un glisser-déposer fluide des cartes.
+- [X] **Drag & Drop :** Remplacer le système de clics par un glisser-déposer fluide des cartes.
 - [ ] **Plateau Immersif :** Design graphique amélioré (tapis de jeu, zones distinctes).
 - [ ] **Feedback Visuel :** Animations pour les attaques, les dégâts et l'utilisation des Mindbugs.
 - [ ] **Audio :** Ajout de bruitages et d'une musique d'ambiance dynamique.
 
 ### 🧠 Intelligence Artificielle (IA)
 
-- [ ] **IA "Parfaite" (MCTS) :** Implémentation de Monte Carlo Tree Search pour une prise de décision stratégique profonde.
+- [X] **IA "Puissante" (MCTS) :** Implémentation de Monte Carlo Tree Search pour une prise de décision stratégique profonde.
 - [ ] **Conseiller Stratégique (Stat Advisor) :** Un assistant en jeu qui utilise l'IA pour analyser votre situation, évaluer vos chances de victoire et suggérer le meilleur coup (idéal pour apprendre).
 
 ### ⚙️ Moteur & Contenu
