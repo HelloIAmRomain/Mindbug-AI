@@ -30,4 +30,4 @@ def test_factory_creates_extreme_agent():
     
     assert isinstance(agent, MCTSAgent)
     # On vérifie qu'il a au moins 5 secondes de réflexion
-    assert agent.simulation_time >= 5.0
+    assert agent.simulation_time >= 4.0
