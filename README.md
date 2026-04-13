@@ -42,6 +42,10 @@ graph TD
     AI[Agent IA] -.->|Clone & Simulate| Game
 ```
 
+## Bugs trouvés
+
+- la carte oursin hurleur a +2 pendant son tour --> ne pas appliquer le bufff durant la phase de bloquage
+
 ## 🚀 Installation & Utilisation
 
 ### Prérequis
