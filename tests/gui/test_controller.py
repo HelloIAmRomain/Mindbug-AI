@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import Mock, MagicMock
-from mindbug_engine.core.models import Card
-from mindbug_engine.core.consts import Phase
-from mindbug_gui.controller import InputHandler
+from mindbug.engine.core.models import Card
+from mindbug.engine.core.consts import Phase
+from mindbug.gui.controller import InputHandler
 
 
 @pytest.fixture

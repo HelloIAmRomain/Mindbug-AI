@@ -1,7 +1,7 @@
 from types import SimpleNamespace
-from mindbug_engine.managers.effect_manager import EffectManager
-from mindbug_engine.core.models import Card, CardEffect, Player
-from mindbug_engine.core.consts import EffectType, Trigger
+from mindbug.engine.managers.effect_manager import EffectManager
+from mindbug.engine.core.models import Card, CardEffect, Player
+from mindbug.engine.core.consts import EffectType, Trigger
 
 
 def make_game_state():

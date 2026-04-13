@@ -1,9 +1,9 @@
 import pytest
 import json
 from unittest.mock import patch
-from mindbug_engine.infrastructure.card_loader import CardLoader
-from mindbug_engine.engine import MindbugGame
-from mindbug_engine.core.consts import Difficulty
+from mindbug.engine.infrastructure.card_loader import CardLoader
+from mindbug.engine.engine import MindbugGame
+from mindbug.engine.core.consts import Difficulty
 
 
 class MockConfig:
@@ -42,7 +42,7 @@ def test_engine_filtering(mock_cards_json):
     """Vérifie le filtrage via la config injectée."""
 
     # On patche la référence dans le module engine directement
-    with patch("mindbug_engine.engine.PATH_DATA", mock_cards_json):
+    with patch("mindbug.engine.engine.PATH_DATA", mock_cards_json):
         # Cas A : Set A uniquement
         cfg_a = MockConfig()
         cfg_a.active_sets = ["SET_A"]

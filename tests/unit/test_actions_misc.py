@@ -1,11 +1,11 @@
 from types import SimpleNamespace
 import pytest
 
-from mindbug_engine.managers.effects.actions.modify_stat import ModifyStatAction
-from mindbug_engine.managers.effects.actions.play import PlayAction
-from mindbug_engine.managers.effects.actions.steal import StealAction
-from mindbug_engine.managers.effects.base import EffectAction
-from mindbug_engine.core.models import Card
+from mindbug.engine.managers.effects.actions.modify_stat import ModifyStatAction
+from mindbug.engine.managers.effects.actions.play import PlayAction
+from mindbug.engine.managers.effects.actions.steal import StealAction
+from mindbug.engine.managers.effects.base import EffectAction
+from mindbug.engine.core.models import Card
 
 
 def test_effectaction_is_abstract():

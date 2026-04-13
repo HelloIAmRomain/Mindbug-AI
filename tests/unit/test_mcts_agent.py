@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from mindbug_ai.mcts.agent import MCTSAgent
+from mindbug.ai.mcts.agent import MCTSAgent
 
 
 def test_mcts_agent_returns_move_within_time_budget():
@@ -15,6 +15,10 @@ def test_mcts_agent_returns_move_within_time_budget():
 
     mock_game.state.player1.hp = 3
     mock_game.state.player2.hp = 3
+    mock_game.state.player1.board = []
+    mock_game.state.player2.board = []
+    mock_game.state.player1.mindbugs = 2
+    mock_game.state.player2.mindbugs = 2
 
     # Le clone doit retourner un mock aussi pour la simulation
     mock_clone = MagicMock()
@@ -23,6 +27,10 @@ def test_mcts_agent_returns_move_within_time_budget():
 
     mock_clone.state.player1.hp = 3
     mock_clone.state.player2.hp = 3
+    mock_clone.state.player1.board = []
+    mock_clone.state.player2.board = []
+    mock_clone.state.player1.mindbugs = 2
+    mock_clone.state.player2.mindbugs = 2
 
     mock_clone.get_legal_moves.return_value = [
         ("PLAY", 0)]  # Coups pour la simu

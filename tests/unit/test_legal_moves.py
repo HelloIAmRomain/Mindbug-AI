@@ -1,7 +1,7 @@
 import pytest
-from mindbug_engine.engine import MindbugGame
-from mindbug_engine.core.models import Card, SelectionRequest
-from mindbug_engine.core.consts import Phase
+from mindbug.engine.engine import MindbugGame
+from mindbug.engine.core.models import Card, SelectionRequest
+from mindbug.engine.core.consts import Phase
 
 
 def test_legal_moves_main_phase(game):
@@ -9,7 +9,7 @@ def test_legal_moves_main_phase(game):
     game.state.phase = Phase.P1_MAIN
     game.state.active_player_idx = 0
 
-    from mindbug_engine.core.models import Card
+    from mindbug.engine.core.models import Card
     game.state.player1.board = [Card("b1", "Beast", 5)]
 
     moves = game.get_legal_moves()
@@ -20,7 +20,7 @@ def test_legal_moves_main_phase(game):
 
 def test_legal_moves_selection(game):
     # Setup du plateau pour le test
-    from mindbug_engine.core.models import Card
+    from mindbug.engine.core.models import Card
     target = Card("target", "Target", 5)
     game.state.player2.board = [target]
 

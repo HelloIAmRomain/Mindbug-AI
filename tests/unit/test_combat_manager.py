@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
-from mindbug_engine.managers.combat_manager import CombatManager
-from mindbug_engine.core.models import Card, Player
-from mindbug_engine.core.consts import Keyword, Trigger
+from mindbug.engine.managers.combat_manager import CombatManager
+from mindbug.engine.core.models import Card, Player
+from mindbug.engine.core.consts import Keyword, Trigger
 
 
 def make_game_and_players():

@@ -1,7 +1,7 @@
 import pytest
-from mindbug_engine.core.models import Card
-from mindbug_engine.core.consts import Phase, Keyword, Difficulty
-from mindbug_ai.factory import AgentFactory
+from mindbug.engine.core.models import Card
+from mindbug.engine.core.consts import Phase, Keyword, Difficulty
+from mindbug.ai.factory import AgentFactory
 
 # =============================================================================
 # SCÉNARIO 1 : PvP (Humain vs Humain)

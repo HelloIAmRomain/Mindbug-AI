@@ -1,5 +1,5 @@
 import json
-from mindbug_engine.infrastructure import card_loader as cl
+from mindbug.engine.infrastructure import card_loader as cl
 
 
 def test_load_missing_file_logs_and_returns_empty(tmp_path, monkeypatch):

@@ -1,6 +1,6 @@
 import pytest
-from mindbug_engine.core.models import CardEffect
-from mindbug_engine.core.consts import Phase, EffectType, Trigger
+from mindbug.engine.core.models import CardEffect
+from mindbug.engine.core.consts import Phase, EffectType, Trigger
 
 
 # Utilisation de game_empty pour éviter les interférences avec le setup automatique

@@ -1,8 +1,8 @@
 import pytest
 import json
 from unittest.mock import patch, mock_open
-from mindbug_engine.core.models import Card, Player, CardEffect
-from mindbug_engine.infrastructure.card_loader import CardLoader
+from mindbug.engine.core.models import Card, Player, CardEffect
+from mindbug.engine.infrastructure.card_loader import CardLoader
 
 
 def test_player_initialization():

@@ -1,4 +1,4 @@
-from mindbug_engine.core.models import SelectionRequest, CardEffect, Card, Player
+from mindbug.engine.core.models import SelectionRequest, CardEffect, Card, Player
 
 
 def test_selectionrequest_repr_uses_selector_name():

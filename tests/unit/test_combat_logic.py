@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import MagicMock
-from mindbug_engine.core.models import Card, Player, CardEffect
-from mindbug_engine.core.state import GameState
-from mindbug_engine.managers.combat_manager import CombatManager
-from mindbug_engine.core.consts import Trigger, Keyword, EffectType
+from mindbug.engine.core.models import Card, Player, CardEffect
+from mindbug.engine.core.state import GameState
+from mindbug.engine.managers.combat_manager import CombatManager
+from mindbug.engine.core.consts import Trigger, Keyword, EffectType
 
 
 class MockGame:

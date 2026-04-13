@@ -27,19 +27,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          # On installe l'outil de génération de badge
-          pip install coverage-badge
+          # genbadge est le remplacement moderne de coverage-badge, compatible Python 3.12+
+          pip install genbadge[coverage]
 
       - name: Run Tests with Coverage
         run: |
-          # Lance les tests et génère le rapport
-          pytest --cov=mindbug_engine tests/
+          # Lance les tests et génère le rapport XML (requis par genbadge)
+          pytest --cov=src/mindbug --cov-report=xml tests/
 
       - name: Generate Coverage Badge
         run: |
-          # Génère le fichier coverage.svg à la racine
-          # -f force l'écrasement si le fichier existe déjà
-          coverage-badge -o coverage.svg -f
+          # Génère le fichier coverage.svg depuis le rapport XML
+          genbadge coverage -i coverage.xml -o coverage.svg
 
       - name: Commit Coverage Badge
         # Cette étape ne s'exécute que sur les Pull Requests (pour ne pas spammer main)

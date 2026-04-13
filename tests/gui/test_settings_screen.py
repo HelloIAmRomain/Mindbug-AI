@@ -1,8 +1,8 @@
 import pytest
 import pygame
 from unittest.mock import MagicMock
-from mindbug_engine.core.consts import Difficulty
-from mindbug_gui.screens.settings_screen import SettingsScreen
+from mindbug.engine.core.consts import Difficulty
+from mindbug.gui.screens.settings_screen import SettingsScreen
 
 
 # --- STUB (Faux Objet Simple) ---
