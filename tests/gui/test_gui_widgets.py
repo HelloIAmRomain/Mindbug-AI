@@ -1,6 +1,6 @@
-from mindbug_gui.widgets.card_view import CardView
-from mindbug_gui.widgets.buttons import Button
-from mindbug_engine.core.models import Card
+from mindbug.gui.widgets.card_view import CardView
+from mindbug.gui.widgets.buttons import Button
+from mindbug.engine.core.models import Card
 from unittest.mock import Mock, patch
 import pygame
 import pytest
@@ -24,7 +24,7 @@ def pygame_setup():
 
 @pytest.fixture
 def mock_resource_manager():
-    with patch('mindbug_gui.widgets.card_view.ResourceManager') as MockClass:
+    with patch('mindbug.gui.widgets.card_view.ResourceManager') as MockClass:
         instance = MockClass.return_value
         instance.get_card_image.return_value = pygame.Surface((100, 140))
         instance.get_font.return_value = pygame.font.SysFont("Arial", 12)

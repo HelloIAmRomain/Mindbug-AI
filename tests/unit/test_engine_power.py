@@ -1,5 +1,5 @@
-from mindbug_engine.core.models import Card, CardEffect
-from mindbug_engine.core.consts import Phase
+from mindbug.engine.core.models import Card, CardEffect
+from mindbug.engine.core.consts import Phase
 
 
 def test_power_boost_my_turn(game):

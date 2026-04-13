@@ -1,6 +1,6 @@
 import pytest
-from mindbug_engine.core.consts import Phase, Difficulty
-from mindbug_ai.factory import AgentFactory
+from mindbug.engine.core.consts import Phase, Difficulty
+from mindbug.ai.factory import AgentFactory
 
 
 def test_mcts_integration_decision_does_not_crash(game):
@@ -33,7 +33,7 @@ def test_mcts_integration_mindbug_phase(game):
     game.state.active_player_idx = 1
 
     # On simule une carte jouée par P1
-    from mindbug_engine.core.models import Card
+    from mindbug.engine.core.models import Card
     game.state.pending_card = Card("test", "TestUnit", 5)
 
     action = agent.get_action(game)

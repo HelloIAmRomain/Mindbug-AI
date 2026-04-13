@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 import pickle
 
-from mindbug_engine.engine import MindbugGame
-from mindbug_engine.core.models import Card
-from mindbug_engine.core.consts import Phase, Trigger, EffectType
+from mindbug.engine.engine import MindbugGame
+from mindbug.engine.core.models import Card
+from mindbug.engine.core.consts import Phase, Trigger, EffectType
 
 
 def make_config():
@@ -22,7 +22,7 @@ def make_small_deck():
 
 def test_start_game_sets_hands_and_players(monkeypatch):
     # patch DeckFactory
-    monkeypatch.setattr("mindbug_engine.infrastructure.deck_factory.DeckFactory.create_deck",
+    monkeypatch.setattr("mindbug.engine.infrastructure.deck_factory.DeckFactory.create_deck",
                         lambda self, **k: (make_small_deck(), [], ["FIRST_CONTACT"]))
 
     g = MindbugGame(make_config())
@@ -43,7 +43,7 @@ def test_start_game_sets_hands_and_players(monkeypatch):
 
 
 def test_get_legal_moves_mindbug_and_frenzy(monkeypatch):
-    monkeypatch.setattr("mindbug_engine.infrastructure.deck_factory.DeckFactory.create_deck",
+    monkeypatch.setattr("mindbug.engine.infrastructure.deck_factory.DeckFactory.create_deck",
                         lambda self, **k: (make_small_deck(), [], []))
     g = MindbugGame(make_config())
 
@@ -63,7 +63,7 @@ def test_get_legal_moves_mindbug_and_frenzy(monkeypatch):
 
 
 def test_execute_mindbug_replay_calls_turn_manager(monkeypatch):
-    monkeypatch.setattr("mindbug_engine.infrastructure.deck_factory.DeckFactory.create_deck",
+    monkeypatch.setattr("mindbug.engine.infrastructure.deck_factory.DeckFactory.create_deck",
                         lambda self, **k: (make_small_deck(), [], []))
     g = MindbugGame(make_config())
 
@@ -84,7 +84,7 @@ def test_execute_mindbug_replay_calls_turn_manager(monkeypatch):
 
 
 def test_resolve_selection_effect_triggers_replay_and_pending_attacker(monkeypatch):
-    monkeypatch.setattr("mindbug_engine.infrastructure.deck_factory.DeckFactory.create_deck",
+    monkeypatch.setattr("mindbug.engine.infrastructure.deck_factory.DeckFactory.create_deck",
                         lambda self, **k: (make_small_deck(), [], []))
     g = MindbugGame(make_config())
 
@@ -115,7 +115,7 @@ def test_resolve_selection_effect_triggers_replay_and_pending_attacker(monkeypat
 
 
 def test_put_card_on_board_triggers_or_suppresses_apply_effect(monkeypatch):
-    monkeypatch.setattr("mindbug_engine.infrastructure.deck_factory.DeckFactory.create_deck",
+    monkeypatch.setattr("mindbug.engine.infrastructure.deck_factory.DeckFactory.create_deck",
                         lambda self, **k: (make_small_deck(), [], []))
     g = MindbugGame(make_config())
 
@@ -152,7 +152,7 @@ def test_put_card_on_board_triggers_or_suppresses_apply_effect(monkeypatch):
 
 
 def test_clone_creates_independent_state(monkeypatch):
-    monkeypatch.setattr("mindbug_engine.infrastructure.deck_factory.DeckFactory.create_deck",
+    monkeypatch.setattr("mindbug.engine.infrastructure.deck_factory.DeckFactory.create_deck",
                         lambda self, **k: (make_small_deck(), [], []))
     g = MindbugGame(make_config())
     g.state.player1.hp = 9

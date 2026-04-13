@@ -1,7 +1,7 @@
 import pytest
-from mindbug_engine.engine import MindbugGame
-from mindbug_engine.core.models import Card, CardEffect
-from mindbug_engine.core.consts import Phase, Trigger, EffectType
+from mindbug.engine.engine import MindbugGame
+from mindbug.engine.core.models import Card, CardEffect
+from mindbug.engine.core.consts import Phase, Trigger, EffectType
 
 
 def test_trigger_unblocked_effect(game):

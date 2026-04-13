@@ -1,7 +1,7 @@
 import pytest
-from mindbug_engine.core.models import Card, Player
-from mindbug_engine.core.state import GameState
-from mindbug_ai.mcts.determinizer import Determinizer
+from mindbug.engine.core.models import Card, Player
+from mindbug.engine.core.state import GameState
+from mindbug.ai.mcts.determinizer import Determinizer
 
 # --- FIXTURES ---
 

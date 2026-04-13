@@ -1,6 +1,6 @@
 import pytest
-from mindbug_engine.core.models import Card
-from mindbug_engine.core.consts import Phase
+from mindbug.engine.core.models import Card
+from mindbug.engine.core.consts import Phase
 
 
 def test_initial_setup(game):

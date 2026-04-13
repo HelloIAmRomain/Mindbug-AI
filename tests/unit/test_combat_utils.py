@@ -1,6 +1,6 @@
-from mindbug_engine.utils.combat_utils import CombatUtils
-from mindbug_engine.core.models import Card, CardEffect
-from mindbug_engine.core.consts import Keyword
+from mindbug.engine.utils.combat_utils import CombatUtils
+from mindbug.engine.core.models import Card, CardEffect
+from mindbug.engine.core.consts import Keyword
 
 
 def test_simulate_combat_basic_outcomes():

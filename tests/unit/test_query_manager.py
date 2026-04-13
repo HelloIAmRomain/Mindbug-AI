@@ -1,7 +1,7 @@
 from types import SimpleNamespace
-from mindbug_engine.managers.query_manager import QueryManager
-from mindbug_engine.core.models import SelectionRequest
-from mindbug_engine.core.consts import Phase
+from mindbug.engine.managers.query_manager import QueryManager
+from mindbug.engine.core.models import SelectionRequest
+from mindbug.engine.core.consts import Phase
 
 
 def make_game():

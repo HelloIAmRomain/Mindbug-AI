@@ -1,6 +1,6 @@
 import json
-from mindbug_engine.core.config import ConfigurationService
-from mindbug_engine.core.consts import Difficulty
+from mindbug.engine.core.config import ConfigurationService
+from mindbug.engine.core.consts import Difficulty
 
 
 def test_load_nonexistent_file_uses_defaults(tmp_path, monkeypatch):

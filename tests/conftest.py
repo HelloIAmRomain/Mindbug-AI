@@ -1,6 +1,6 @@
-from mindbug_engine.core.consts import Difficulty
-from mindbug_engine.core.models import Card, CardEffect
-from mindbug_engine.engine import MindbugGame
+from mindbug.engine.core.consts import Difficulty
+from mindbug.engine.core.models import Card, CardEffect
+from mindbug.engine.engine import MindbugGame
 import pytest
 import sys
 import os

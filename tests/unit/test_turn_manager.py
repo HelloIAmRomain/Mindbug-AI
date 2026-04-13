@@ -1,7 +1,7 @@
 from types import SimpleNamespace
-from mindbug_engine.managers.turn_manager import TurnManager
-from mindbug_engine.core.consts import Phase
-from mindbug_engine.core.models import Player, Card
+from mindbug.engine.managers.turn_manager import TurnManager
+from mindbug.engine.core.consts import Phase
+from mindbug.engine.core.models import Player, Card
 
 
 class FakeState:

@@ -1,9 +1,9 @@
 import random
 from types import SimpleNamespace
 
-from mindbug_engine.infrastructure.deck_factory import DeckFactory
-from mindbug_engine.core.models import Card
-from mindbug_engine.infrastructure import card_loader
+from mindbug.engine.infrastructure.deck_factory import DeckFactory
+from mindbug.engine.core.models import Card
+from mindbug.engine.infrastructure import card_loader
 
 
 def make_card(i, set_name="SET"):

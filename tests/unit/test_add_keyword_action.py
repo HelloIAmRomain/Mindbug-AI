@@ -1,6 +1,6 @@
 from types import SimpleNamespace
-from mindbug_engine.managers.effects.actions.add_keyword import AddKeywordAction
-from mindbug_engine.core.consts import Keyword
+from mindbug.engine.managers.effects.actions.add_keyword import AddKeywordAction
+from mindbug.engine.core.consts import Keyword
 
 
 def test_execute_ignores_targets_without_keywords():
@@ -36,7 +36,7 @@ def test_execute_invalid_keyword_logs_error(monkeypatch):
         logs.append(msg)
 
     # patch the logger used in the exception block
-    monkeypatch.setattr("mindbug_engine.utils.logger.log_error", fake_log)
+    monkeypatch.setattr("mindbug.engine.utils.logger.log_error", fake_log)
 
     action.execute(target, {"keywords": ["NOT_A_KEY"]}, None, None, None)
     assert any("Mot-clé inconnu" in str(m) or "unknown" in str(m).lower()

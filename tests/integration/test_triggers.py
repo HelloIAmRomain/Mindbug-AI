@@ -1,6 +1,6 @@
 import pytest
-from mindbug_engine.core.models import Card, CardEffect
-from mindbug_engine.core.consts import Phase, Trigger, EffectType
+from mindbug.engine.core.models import Card, CardEffect
+from mindbug.engine.core.consts import Phase, Trigger, EffectType
 
 
 def test_integration_on_play_trigger(game):

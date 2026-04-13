@@ -1,8 +1,8 @@
 import os
 import sys
 
-from mindbug_gui.core.app import MindbugApp
-from mindbug_gui.screens.menu_screen import MenuScreen
+from mindbug.gui.core.app import MindbugApp
+from mindbug.gui.screens.menu_screen import MenuScreen
 
 if __name__ == "__main__":
     # 1. On instancie l'App (elle va charger Config et ResourceManager toute seule)

@@ -1,10 +1,10 @@
 import pytest
 from types import SimpleNamespace
 
-from mindbug_engine.commands.command import Command
-from mindbug_engine.commands import command_factory as cf
-from mindbug_engine.commands import definitions as defs
-from mindbug_engine.core.consts import Phase
+from mindbug.engine.commands.command import Command
+from mindbug.engine.commands import command_factory as cf
+from mindbug.engine.commands import definitions as defs
+from mindbug.engine.core.consts import Phase
 
 
 def test_command_is_abstract():

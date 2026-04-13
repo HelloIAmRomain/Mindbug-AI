@@ -1,6 +1,6 @@
 import pytest
-from mindbug_engine.core.models import Card, CardEffect
-from mindbug_engine.utils.combat_utils import CombatUtils
+from mindbug.engine.core.models import Card, CardEffect
+from mindbug.engine.utils.combat_utils import CombatUtils
 
 
 # --- FIXTURES LÉGÈRES ---

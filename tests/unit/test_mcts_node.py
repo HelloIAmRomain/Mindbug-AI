@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from mindbug_ai.mcts.node import MCTSNode
+from mindbug.ai.mcts.node import MCTSNode
 
 
 def test_mcts_node_initialization():

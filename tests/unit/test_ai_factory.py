@@ -1,8 +1,8 @@
 import pytest
-from mindbug_engine.core.consts import Difficulty
-from mindbug_ai.factory import AgentFactory
-from mindbug_ai.interface import AgentInterface
-from mindbug_ai.mcts.agent import MCTSAgent
+from mindbug.engine.core.consts import Difficulty
+from mindbug.ai.factory import AgentFactory
+from mindbug.ai.interface import AgentInterface
+from mindbug.ai.mcts.agent import MCTSAgent
 
 
 def test_factory_creates_mcts_agent():
